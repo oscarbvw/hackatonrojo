@@ -1,4 +1,4 @@
-"""Generate the Energy Hunter pitch deck (.pptx) for the 5-minute hackathon demo.
+"""Generate the Smart Energy Control pitch deck (.pptx) for the 5-minute hackathon demo.
 
 Run:
     python scripts/generate_deck.py
@@ -171,7 +171,7 @@ def make_dashboard_mock(path: Path) -> None:
 
     # Top bar
     draw.rectangle((0, 0, W, 80), fill=P_DEEP)
-    draw.text((40, 22), "Energy Hunter — Panel B2B", fill=P_WHITE, font=_font(32, bold=True))
+    draw.text((40, 22), "Smart Energy Control — Panel B2B", fill=P_WHITE, font=_font(32, bold=True))
     draw.ellipse((W - 60, 28, W - 36, 52), fill=P_LIME)
 
     # Sidebar (building list)
@@ -718,7 +718,7 @@ def add_bullets(
 def add_footer(slide, page_num: int, total: int) -> None:
     add_textbox(
         slide, Inches(0.5), Inches(7.05), Inches(8), Inches(0.35),
-        "Energy Hunter · Hackathon Demo", size=11, color=SLATE,
+        "Smart Energy Control · Hackathon Demo", size=11, color=SLATE,
     )
     add_textbox(
         slide, Inches(11.5), Inches(7.05), Inches(1.4), Inches(0.35),
@@ -735,7 +735,7 @@ def add_speaker_notes(slide, text: str) -> None:
 # Slide layouts                                                               #
 # --------------------------------------------------------------------------- #
 
-TOTAL_SLIDES = 13
+TOTAL_SLIDES = 14
 
 
 def build_cover(prs: Presentation, hero_path: Path) -> None:
@@ -753,7 +753,7 @@ def build_cover(prs: Presentation, hero_path: Path) -> None:
 
     add_textbox(
         slide, Inches(0.7), Inches(3.62), Inches(12), Inches(0.6),
-        "Energy Hunter", size=28, bold=True, color=WHITE,
+        "Smart Energy Control", size=28, bold=True, color=WHITE,
     )
 
     # Subtitle block
@@ -843,7 +843,7 @@ def build_advantages(prs: Presentation, page: int) -> None:
     slide = build_title_slide(
         prs, page,
         "Ventajas clave",
-        "Por qué Energy Hunter mueve la aguja",
+        "Por qué Smart Energy Control mueve la aguja",
         "Diseñado alrededor del ahorro, la accesibilidad y la velocidad de reacción",
     )
 
@@ -939,11 +939,75 @@ def build_savings(prs: Presentation, page: int, image: Path) -> None:
     )
 
 
+def build_live_gallery(prs: Presentation, page: int, image_a: Path, image_b: Path) -> None:
+    """Two-up gallery slide showing real Smart Energy Control screenshots."""
+    slide = build_title_slide(
+        prs, page,
+        "El producto en vivo",
+        "Capturas reales del dashboard en marcha",
+        "Mapa, telemetría por fase, anomalías y panel de control en una sola vista",
+    )
+
+    # Frame helper: a thin green border around each picture.
+    def add_framed_picture(path: Path, left, top, width):
+        pic = slide.shapes.add_picture(str(path), left, top, width=width)
+        # Pillow-side aspect: read once
+        from PIL import Image as _PILImage  # local import keeps top-level clean
+        img = _PILImage.open(str(path))
+        ratio = img.height / img.width
+        height = int(width * ratio)
+        # Add a thin frame using a rectangle behind the picture
+        frame = slide.shapes.add_shape(
+            MSO_SHAPE.RECTANGLE,
+            left - Inches(0.04), top - Inches(0.04),
+            width + Inches(0.08), height + Inches(0.08),
+        )
+        frame.line.color.rgb = LEAF_GREEN
+        frame.line.width = Pt(1.5)
+        frame.fill.solid()
+        frame.fill.fore_color.rgb = WHITE
+        # Reorder: frame should be behind the picture
+        spTree = frame._element.getparent()
+        spTree.remove(frame._element)
+        spTree.insert(list(spTree).index(pic._element), frame._element)
+        return left, top, width, height
+
+    # Two screenshots side by side, fitted to half-width
+    pic_w = Inches(6.1)
+    add_framed_picture(image_a, Inches(0.45), Inches(2.4), pic_w)
+    add_framed_picture(image_b, Inches(6.75), Inches(2.4), pic_w)
+
+    # Captions
+    add_textbox(
+        slide, Inches(0.45), Inches(5.4), pic_w, Inches(0.4),
+        "Vista global · mapa, KPIs y curva de consumo",
+        size=14, bold=True, color=DEEP_GREEN, align=PP_ALIGN.CENTER,
+    )
+    add_textbox(
+        slide, Inches(6.75), Inches(5.4), pic_w, Inches(0.4),
+        "Detalle de fases · estado API y anomalías marcadas",
+        size=14, bold=True, color=DEEP_GREEN, align=PP_ALIGN.CENTER,
+    )
+
+    # Bottom value strip
+    strip = slide.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE,
+                                   Inches(0.45), Inches(6.0), Inches(12.4), Inches(0.65))
+    strip.line.fill.background()
+    strip.fill.solid()
+    strip.fill.fore_color.rgb = LIME
+    add_textbox(
+        slide, Inches(0.45), Inches(6.0), Inches(12.4), Inches(0.65),
+        "Lo que ves está corriendo en local hoy. Mismo código que se desplegará en AWS.",
+        size=14, bold=True, color=CHARCOAL,
+        align=PP_ALIGN.CENTER, anchor=MSO_ANCHOR.MIDDLE,
+    )
+
+
 def build_aws_deployment(prs: Presentation, page: int, image: Path) -> None:
     slide = build_title_slide(
         prs, page,
         "Despliegue en producción",
-        "Cómo se escala Energy Hunter en AWS con IoT Core",
+        "Cómo se escala Smart Energy Control en AWS con IoT Core",
         "Mismo código del MVP, ahora con grado industrial: seguro, elástico y multi-región",
     )
     slide.shapes.add_picture(str(image), Inches(0.4), Inches(2.25), width=Inches(8.4))
@@ -1040,7 +1104,7 @@ def build_closing(prs: Presentation, page: int) -> None:
     )
     add_textbox(
         slide, Inches(0.7), Inches(2.7), Inches(12), Inches(0.8),
-        "Energy Hunter convierte cada edificio en un actor activo del ahorro.",
+        "Smart Energy Control convierte cada edificio en un actor activo del ahorro.",
         size=22, color=SAND,
     )
 
@@ -1094,6 +1158,13 @@ def main() -> Path:
     make_savings_chart(savings)
     make_roadmap_image(roadmap)
 
+    # User-supplied real Smart Energy Control screenshots
+    APP_DIR = ROOT / "presentations" / "app"
+    app_main = APP_DIR / "imagen.png"
+    app_panic = APP_DIR / "imagen2.png"
+    app_extra_a = APP_DIR / "imagen3.png"
+    app_extra_b = APP_DIR / "imagen4.png"
+
     # 2. Build deck (16:9)
     prs = Presentation()
     prs.slide_width = SLIDE_W
@@ -1102,7 +1173,7 @@ def main() -> Path:
     # Speaker notes (~25-30 s each, kept tight for a 5-minute pitch).
     notes = {
         1: (
-            "Hola, somos el equipo de Energy Hunter. En los próximos cinco minutos vais "
+            "Hola, somos el equipo de Smart Energy Control. En los próximos cinco minutos vais "
             "a ver una herramienta B2B que ayuda a edificios y empresas a consumir menos "
             "energía y emitir menos CO2, con un solo clic. Menos consumo, menos "
             "emisiones, más control."
@@ -1115,10 +1186,10 @@ def main() -> Path:
             "Hay un agujero entre lo que se mide y lo que se puede accionar."
         ),
         3: (
-            "Energy Hunter cierra ese hueco. Es un panel hecho en Streamlit que recibe "
-            "telemetría cada 30 segundos por fase, muestra los edificios en mapa, "
-            "calcula el coste con el precio del mercado SIOS y marca cualquier consumo "
-            "anómalo. Ve, alerta, y en la siguiente diapositiva veréis cómo actúa."
+            "Smart Energy Control cierra ese hueco. Lo que veis en pantalla no es un "
+            "mockup: es la aplicación real. Recibe telemetría cada 30 segundos por "
+            "fase, muestra los edificios en mapa, calcula el coste con el precio del "
+            "mercado SIOS y marca cualquier consumo anómalo. Ve, alerta y acciona."
         ),
         4: (
             "Estas son las seis ventajas que diferencian al producto: ahorro inmediato "
@@ -1135,19 +1206,26 @@ def main() -> Path:
             "acción se anuncia con aria-live para lectores de pantalla."
         ),
         6: (
+            "Aquí tenéis dos vistas más del producto en marcha. A la izquierda, la "
+            "vista global con mapa, KPIs y consumo por fase. A la derecha, el detalle "
+            "con el estado de la API en tiempo real y las anomalías marcadas. Todo "
+            "esto está corriendo en local hoy, con el mismo código que llevaremos a "
+            "AWS."
+        ),
+        7: (
             "La arquitectura del MVP es simple a propósito. Streamlit consume un Mock "
             "API local que simula los breakers y los precios SIOS, y un stub de Kiro "
             "orquesta el fan-out a Modo Eco. Todo se levanta con dos comandos. La "
             "lógica está cubierta con TDD y diez propiedades verificadas con Hypothesis."
         ),
-        7: (
+        8: (
             "Para producción, llevamos exactamente la misma lógica a AWS. Los breakers "
             "publican por MQTT a IoT Core con TLS mutuo. Las reglas disparan funciones "
             "Lambda que escriben en Timestream y, si detectan una anomalía, llaman al "
             "endpoint de Modo Eco. El frontend Streamlit corre en Fargate detrás de "
             "CloudFront y Cognito. Greengrass es opcional para autonomía sin red."
         ),
-        8: (
+        9: (
             "Y aquí está el argumento de venta: en los tres tramos el ahorro supera al "
             "coste por más de siete a uno. Una pyme paga noventa y cinco euros al mes "
             "en AWS y se ahorra setecientos veinte. Una mediana paga trescientos "
@@ -1155,60 +1233,61 @@ def main() -> Path:
             "mil ochocientos cincuenta y se ahorra veintiséis mil. ROI positivo desde "
             "el primer mes."
         ),
-        9: (
+        10: (
             "Si os preguntáis a dónde va cada euro: Timestream y Fargate son los "
             "servicios más pesados, IoT Core suma poco gracias a la tarifa por millón "
             "de mensajes, y Lambda apenas pesa. No hay licencias por dispositivo ni "
             "compromisos anuales. Con Savings Plans bajamos otro veinte a cuarenta por "
             "ciento. Cero sorpresas en factura."
         ),
-        10: (
+        11: (
             "El impacto es medible y auditable. Cada fase que entra en Modo Eco baja "
             "su consumo un cuarenta por ciento, lo que se traduce en menos kilovatios, "
             "menos euros y menos CO2 emitido. Y todo queda registrado, así que el "
             "cliente puede demostrar el ahorro a su comité o a su auditor de "
             "sostenibilidad."
         ),
-        11: (
+        12: (
             "El roadmap es claro. Hoy entregamos el MVP del hackathon. El siguiente "
             "paso es un piloto con tres edificios reales. Después integramos breakers "
             "físicos vía IoT Core, añadimos multi-tenant y alertas con IA, y lo "
             "llevamos al mercado europeo."
         ),
-        12: (
+        13: (
             "Frente a otros proyectos del hackathon, no nos quedamos en la "
             "visualización: actuamos. Granularidad por fase, stack abierto, "
             "accesibilidad desde el día uno y verificación formal con propiedades. "
             "Eso convierte una demo bonita en algo que un comprador B2B puede llevar "
             "a producción."
         ),
-        13: (
-            "Energía bajo control, naturaleza protegida. Energy Hunter convierte cada "
+        14: (
+            "Energía bajo control, naturaleza protegida. Smart Energy Control convierte cada "
             "edificio en un actor activo del ahorro. Estamos abiertos a preguntas y "
             "tenemos demo en vivo lista. Gracias."
         ),
     }
 
-    s1 = build_cover(prs, hero)                                           # 1
-    s2 = build_problem(prs, 2, problem)                                   # 2
-    s3 = build_solution(prs, 3, dashboard)                                # 3
-    s4 = build_advantages(prs, 4)                                         # 4
-    s5 = build_panic(prs, 5, panic)                                       # 5
-    s6 = build_architecture(prs, 6, architecture)                         # 6
-    s7 = build_aws_deployment(prs, 7, aws_arch)                           # 7
-    s8 = build_aws_costs(prs, 8, cost_compare)                            # 8
-    s9 = build_aws_breakdown(prs, 9, cost_breakdown)                      # 9
-    s10 = build_savings(prs, 10, savings)                                 # 10
-    s11 = build_roadmap(prs, 11, roadmap)                                 # 11
-    # Slide 12: differentiation vs alternatives
-    s12 = build_title_slide(
-        prs, 12,
+    build_cover(prs, hero)                              # 1
+    build_problem(prs, 2, problem)                      # 2
+    build_solution(prs, 3, app_main)                    # 3 (real screenshot)
+    build_advantages(prs, 4)                            # 4
+    build_panic(prs, 5, app_panic)                      # 5 (real screenshot)
+    build_live_gallery(prs, 6, app_extra_a, app_extra_b)  # 6 (real screenshots)
+    build_architecture(prs, 7, architecture)            # 7
+    build_aws_deployment(prs, 8, aws_arch)              # 8
+    build_aws_costs(prs, 9, cost_compare)               # 9
+    build_aws_breakdown(prs, 10, cost_breakdown)        # 10
+    build_savings(prs, 11, savings)                     # 11
+    build_roadmap(prs, 12, roadmap)                     # 12
+    # Slide 13: differentiation vs alternatives
+    diff = build_title_slide(
+        prs, 13,
         "Frente a alternativas",
         "Lo que nos diferencia de otros proyectos del hackathon",
         "Foco en acción, no solo en visualización",
     )
     add_bullets(
-        s12, Inches(0.7), Inches(2.6), Inches(12), Inches(4),
+        diff, Inches(0.7), Inches(2.6), Inches(12), Inches(4),
         [
             "Otros muestran datos: nosotros además accionamos el Modo Eco en segundos.",
             "Granularidad por fase, no por edificio entero (cargas críticas siempre seguras).",
@@ -1218,7 +1297,7 @@ def main() -> Path:
         ],
         size=18,
     )
-    s13 = build_closing(prs, 13)                                          # 13
+    build_closing(prs, 14)                              # 14
 
     # Attach speaker notes (slides are 1-indexed via prs.slides)
     slide_objs = list(prs.slides)
