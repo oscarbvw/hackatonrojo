@@ -359,6 +359,235 @@ def make_savings_chart(path: Path) -> None:
     img.save(path, "PNG", optimize=True)
 
 
+def make_aws_architecture_image(path: Path) -> None:
+    """AWS deployment diagram: edge devices → IoT Core → processing → dashboard."""
+    W, H = 1600, 800
+    img = Image.new("RGB", (W, H), P_SAND)
+    draw = ImageDraw.Draw(img, "RGBA")
+
+    draw.text((50, 30), "Despliegue y escalado en AWS", fill=P_DEEP, font=_font(34, bold=True))
+    draw.text((50, 78), "De edificios físicos a un panel global, sin servidores que mantener",
+              fill=P_CHARCOAL, font=_font(20))
+
+    # Three layers (columns of boxes)
+    layers = [
+        # (x0, label, color, items)
+        (60, "Edge / Edificio", P_LEAF,
+         ["Smart Breakers", "Greengrass\n(opcional)", "Sensor SIOS"]),
+        (440, "AWS IoT Core", P_DEEP,
+         ["MQTT Broker", "Device Shadow", "Rules Engine"]),
+        (820, "Procesado", P_DEEP,
+         ["Lambda\n(anomalías)", "Timestream\n(series)", "S3 + Athena\n(histórico)"]),
+        (1200, "Capa cliente", P_LEAF,
+         ["ECS Fargate\nStreamlit", "API Gateway\n+ Cognito", "CloudFront\n(CDN)"]),
+    ]
+
+    box_w = 320
+    box_h = 110
+    gap = 18
+    title_y = 150
+    for (x0, label, color, items) in layers:
+        # Layer header pill
+        draw.rounded_rectangle((x0, title_y, x0 + box_w, title_y + 50),
+                               radius=12, fill=color)
+        f_h = _font(22, bold=True)
+        bbox = draw.textbbox((0, 0), label, font=f_h)
+        tw = bbox[2] - bbox[0]
+        draw.text((x0 + (box_w - tw) // 2, title_y + 12), label,
+                  fill=P_WHITE, font=f_h)
+        # Items
+        y = title_y + 70
+        for item in items:
+            draw.rounded_rectangle((x0, y, x0 + box_w, y + box_h),
+                                   radius=10, fill=P_WHITE,
+                                   outline=color, width=3)
+            f = _font(20, bold=True)
+            lines = item.split("\n")
+            total_h = len(lines) * 28
+            ty = y + (box_h - total_h) // 2
+            for line in lines:
+                bbox = draw.textbbox((0, 0), line, font=f)
+                tw = bbox[2] - bbox[0]
+                draw.text((x0 + (box_w - tw) // 2, ty), line,
+                          fill=P_CHARCOAL, font=f)
+                ty += 28
+            y += box_h + gap
+
+    # Connecting arrows between layer columns (centered between boxes)
+    def arrow(p0, p1):
+        draw.line([p0, p1], fill=P_CHARCOAL, width=4)
+        ax, ay = p1
+        draw.polygon([(ax - 16, ay - 9), (ax - 16, ay + 9), (ax, ay)],
+                     fill=P_CHARCOAL)
+
+    mid_y = title_y + 70 + box_h + gap + box_h // 2  # middle row vertical center
+    for i in range(3):
+        x_from = 60 + (i + 1) * 380 - 60  # right edge of column i (380 = box_w + 60 gap)
+        x_to = x_from + 60
+        arrow((x_from, mid_y), (x_to, mid_y))
+
+    # Footer line: scaling note
+    draw.rounded_rectangle((50, 700, W - 50, 770), radius=12,
+                           fill=P_LIME)
+    draw.text((70, 718),
+              "Escala lineal: 10 → 10.000 edificios sin tocar la arquitectura. "
+              "Pago por uso, multi-región y tolerancia a fallos por defecto.",
+              fill=P_CHARCOAL, font=_font(20, bold=True))
+
+    img.save(path, "PNG", optimize=True)
+
+
+def make_cost_comparison_image(path: Path) -> None:
+    """Side-by-side bars: monthly AWS cost vs monthly energy savings for 3 tiers."""
+    W, H = 1400, 760
+    img = Image.new("RGB", (W, H), P_SAND)
+    draw = ImageDraw.Draw(img, "RGBA")
+
+    draw.text((50, 30), "Coste AWS vs ahorro energético generado",
+              fill=P_DEEP, font=_font(32, bold=True))
+    draw.text((50, 75),
+              "Tres escenarios de cliente. Barras en €/mes. "
+              "Verde = lo que pagas a AWS; Lima = lo que ahorras en factura eléctrica.",
+              fill=P_CHARCOAL, font=_font(18))
+
+    tiers = [
+        ("Pyme\n3 edificios · 30 fases", 95, 720),
+        ("Mediana empresa\n15 edificios · 180 fases", 380, 4200),
+        ("Corporativo\n80 edificios · 1.200 fases", 1850, 26000),
+    ]
+
+    # Plot area
+    ox, oy = 110, 640
+    plot_h = 470
+    max_val = max(saving for _, _, saving in tiers) * 1.1
+
+    draw.line((ox, 130, ox, oy), fill=P_CHARCOAL, width=3)
+    draw.line((ox, oy, W - 60, oy), fill=P_CHARCOAL, width=3)
+
+    group_w = (W - 60 - ox) // len(tiers)
+    bar_w = 110
+
+    for i, (label, cost, saving) in enumerate(tiers):
+        gx = ox + i * group_w + group_w // 2
+        # AWS cost (deep green)
+        ch = int((cost / max_val) * plot_h)
+        draw.rectangle((gx - bar_w - 10, oy - ch, gx - 10, oy),
+                       fill=P_DEEP)
+        draw.text((gx - bar_w - 10, oy - ch - 32),
+                  f"{cost} €", fill=P_DEEP, font=_font(22, bold=True))
+        # Savings (lime/leaf)
+        sh = int((saving / max_val) * plot_h)
+        draw.rectangle((gx + 10, oy - sh, gx + bar_w + 10, oy),
+                       fill=P_LEAF)
+        draw.text((gx + 10, oy - sh - 32),
+                  f"{saving} €", fill=P_DEEP, font=_font(22, bold=True))
+        # Net delta chip
+        net = saving - cost
+        chip_w = 200
+        draw.rounded_rectangle((gx - chip_w // 2, oy + 90,
+                                gx + chip_w // 2, oy + 130),
+                               radius=14, fill=P_LIME)
+        bbox = draw.textbbox((0, 0), f"+ {net} € netos / mes",
+                             font=_font(18, bold=True))
+        tw = bbox[2] - bbox[0]
+        draw.text((gx - tw // 2, oy + 98), f"+ {net} € netos / mes",
+                  fill=P_CHARCOAL, font=_font(18, bold=True))
+        # Tier label
+        f = _font(18, bold=True)
+        for j, line in enumerate(label.split("\n")):
+            bbox = draw.textbbox((0, 0), line, font=f)
+            tw = bbox[2] - bbox[0]
+            draw.text((gx - tw // 2, oy + 18 + j * 26),
+                      line, fill=P_CHARCOAL, font=f)
+
+    # Legend
+    draw.rectangle((W - 360, 100, W - 340, 122), fill=P_DEEP)
+    draw.text((W - 320, 96), "Coste AWS / mes", fill=P_CHARCOAL,
+              font=_font(20, bold=True))
+    draw.rectangle((W - 360, 138, W - 340, 160), fill=P_LEAF)
+    draw.text((W - 320, 134), "Ahorro factura / mes",
+              fill=P_CHARCOAL, font=_font(20, bold=True))
+
+    img.save(path, "PNG", optimize=True)
+
+
+def make_aws_cost_breakdown_image(path: Path) -> None:
+    """Stacked horizontal bar showing AWS cost split by service for each tier."""
+    W, H = 1400, 720
+    img = Image.new("RGB", (W, H), P_SAND)
+    draw = ImageDraw.Draw(img, "RGBA")
+
+    draw.text((50, 30), "Desglose del coste AWS por servicio",
+              fill=P_DEEP, font=_font(32, bold=True))
+    draw.text((50, 78),
+              "Estimación mensual en eu-west-1 con telemetría cada 30 s.",
+              fill=P_CHARCOAL, font=_font(18))
+
+    # tier_label, total, breakdown[(service, amount, color)]
+    tiers = [
+        ("Pyme · 30 fases · 95 €", 95, [
+            ("IoT Core", 12, P_DEEP),
+            ("Timestream", 28, P_LEAF),
+            ("Lambda", 6, (0x4F, 0xA0, 0x70)),
+            ("Fargate", 32, (0x14, 0x5A, 0x42)),
+            ("CloudFront/Cognito/S3", 17, P_LIME),
+        ]),
+        ("Mediana · 180 fases · 380 €", 380, [
+            ("IoT Core", 60, P_DEEP),
+            ("Timestream", 130, P_LEAF),
+            ("Lambda", 22, (0x4F, 0xA0, 0x70)),
+            ("Fargate", 110, (0x14, 0x5A, 0x42)),
+            ("CloudFront/Cognito/S3", 58, P_LIME),
+        ]),
+        ("Corporativo · 1.200 fases · 1.850 €", 1850, [
+            ("IoT Core", 320, P_DEEP),
+            ("Timestream", 680, P_LEAF),
+            ("Lambda", 110, (0x4F, 0xA0, 0x70)),
+            ("Fargate", 480, (0x14, 0x5A, 0x42)),
+            ("CloudFront/Cognito/S3", 260, P_LIME),
+        ]),
+    ]
+
+    bar_x0 = 380
+    bar_x1 = W - 80
+    bar_full_w = bar_x1 - bar_x0
+    row_h = 90
+    y = 160
+
+    f_label = _font(20, bold=True)
+    f_small = _font(14, bold=True)
+
+    for (label, total, items) in tiers:
+        # Tier label
+        for j, line in enumerate(label.split(" · ")):
+            draw.text((50, y + j * 24), line, fill=P_CHARCOAL, font=f_label)
+        # Stacked bar
+        x = bar_x0
+        for (service, amount, color) in items:
+            seg_w = int(bar_full_w * (amount / total))
+            draw.rectangle((x, y, x + seg_w, y + 60), fill=color)
+            if seg_w > 80:
+                draw.text((x + 8, y + 10), service,
+                          fill=P_WHITE if color != P_LIME else P_CHARCOAL,
+                          font=f_small)
+                draw.text((x + 8, y + 32), f"{amount} €",
+                          fill=P_WHITE if color != P_LIME else P_CHARCOAL,
+                          font=f_small)
+            x += seg_w
+        # Border
+        draw.rectangle((bar_x0, y, bar_x1, y + 60), outline=P_CHARCOAL, width=2)
+        y += row_h + 30
+
+    # Footer note
+    draw.rounded_rectangle((50, H - 80, W - 50, H - 30),
+                           radius=12, fill=P_LIME)
+    draw.text((70, H - 68),
+              "Pago por uso. Sin licencias por dispositivo. Sin compromiso anual.",
+              fill=P_CHARCOAL, font=_font(20, bold=True))
+
+    img.save(path, "PNG", optimize=True)
+
+
 def make_roadmap_image(path: Path) -> None:
     """Horizontal roadmap with milestones."""
     W, H = 1400, 500
@@ -497,11 +726,16 @@ def add_footer(slide, page_num: int, total: int) -> None:
     )
 
 
+def add_speaker_notes(slide, text: str) -> None:
+    """Attach speaker notes to the slide (~25-30 s of speech)."""
+    slide.notes_slide.notes_text_frame.text = text
+
+
 # --------------------------------------------------------------------------- #
 # Slide layouts                                                               #
 # --------------------------------------------------------------------------- #
 
-TOTAL_SLIDES = 10
+TOTAL_SLIDES = 13
 
 
 def build_cover(prs: Presentation, hero_path: Path) -> None:
@@ -705,6 +939,87 @@ def build_savings(prs: Presentation, page: int, image: Path) -> None:
     )
 
 
+def build_aws_deployment(prs: Presentation, page: int, image: Path) -> None:
+    slide = build_title_slide(
+        prs, page,
+        "Despliegue en producción",
+        "Cómo se escala Energy Hunter en AWS con IoT Core",
+        "Mismo código del MVP, ahora con grado industrial: seguro, elástico y multi-región",
+    )
+    slide.shapes.add_picture(str(image), Inches(0.4), Inches(2.25), width=Inches(8.4))
+
+    add_bullets(
+        slide, Inches(9.0), Inches(2.4), Inches(4.0), Inches(4.6),
+        [
+            "AWS IoT Core: MQTT mutuo TLS, Device Shadow por fase.",
+            "Rules Engine → Lambda → Timestream para series temporales.",
+            "S3 + Athena para histórico y auditoría barata.",
+            "Lambda detecta anomalías y publica al webhook de Modo Eco.",
+            "Streamlit corre en ECS Fargate detrás de CloudFront + Cognito.",
+            "Greengrass opcional para autonomía sin red en planta.",
+        ],
+        size=14,
+    )
+
+
+def build_aws_costs(prs: Presentation, page: int, image: Path) -> None:
+    slide = build_title_slide(
+        prs, page,
+        "Coste y retorno",
+        "Lo que paga el cliente en AWS frente a lo que ahorra",
+        "Tres escenarios reales · ROI positivo desde el primer mes",
+    )
+    slide.shapes.add_picture(str(image), Inches(0.4), Inches(2.2), width=Inches(8.4))
+
+    add_bullets(
+        slide, Inches(9.0), Inches(2.3), Inches(4.0), Inches(4.7),
+        [
+            "Pyme: ~95 €/mes en AWS · ahorro ≈ 720 €/mes.",
+            "Mediana: ~380 €/mes en AWS · ahorro ≈ 4.200 €/mes.",
+            "Corporativo: ~1.850 €/mes · ahorro ≈ 26.000 €/mes.",
+            "Pago por uso: IoT Core, Timestream, Lambda, Fargate.",
+            "Sin licencias por dispositivo ni costes ocultos.",
+            "ROI > 7× en todos los tramos analizados.",
+        ],
+        size=14,
+    )
+
+    # Disclaimer footer
+    add_textbox(
+        slide, Inches(0.5), Inches(6.65), Inches(12.3), Inches(0.35),
+        "Estimaciones orientativas en eu-west-1, basadas en mensajes IoT cada 30 s "
+        "y ahorro medio del 15% sobre la factura mensual del cliente.",
+        size=10, color=SLATE,
+    )
+
+
+def build_aws_breakdown(prs: Presentation, page: int, image: Path) -> None:
+    slide = build_title_slide(
+        prs, page,
+        "Coste — desglose",
+        "A dónde va cada euro que pagas a AWS",
+        "Sin sorpresas: 5 servicios, todos con tarifa pública y pago por uso",
+    )
+    slide.shapes.add_picture(str(image), Inches(0.4), Inches(2.2), width=Inches(8.4))
+    add_bullets(
+        slide, Inches(9.0), Inches(2.3), Inches(4.0), Inches(4.7),
+        [
+            "IoT Core: 1 $/M mensajes MQTT.",
+            "Timestream: writes + memory store + queries.",
+            "Lambda: ms de cómputo por anomalía.",
+            "Fargate: vCPU/GB-h del Streamlit.",
+            "CloudFront, Cognito y S3: tráfico y auth.",
+            "Reservas y Savings Plans bajan 20-40%.",
+        ],
+        size=14,
+    )
+    add_textbox(
+        slide, Inches(0.5), Inches(6.65), Inches(12.3), Inches(0.35),
+        "Cifras orientativas. La calculadora oficial de AWS las afina por carga real.",
+        size=10, color=SLATE,
+    )
+
+
 def build_roadmap(prs: Presentation, page: int, image: Path) -> None:
     slide = build_title_slide(
         prs, page,
@@ -762,6 +1077,9 @@ def main() -> Path:
     dashboard = ASSETS / "dashboard_mock.png"
     panic = ASSETS / "panic_panel.png"
     architecture = ASSETS / "architecture.png"
+    aws_arch = ASSETS / "aws_architecture.png"
+    cost_compare = ASSETS / "aws_cost_comparison.png"
+    cost_breakdown = ASSETS / "aws_cost_breakdown.png"
     savings = ASSETS / "savings_chart.png"
     roadmap = ASSETS / "roadmap.png"
 
@@ -770,6 +1088,9 @@ def main() -> Path:
     make_dashboard_mock(dashboard)
     make_panic_image(panic)
     make_architecture_image(architecture)
+    make_aws_architecture_image(aws_arch)
+    make_cost_comparison_image(cost_compare)
+    make_aws_cost_breakdown_image(cost_breakdown)
     make_savings_chart(savings)
     make_roadmap_image(roadmap)
 
@@ -784,11 +1105,13 @@ def main() -> Path:
     build_advantages(prs, 4)                    # 4
     build_panic(prs, 5, panic)                  # 5
     build_architecture(prs, 6, architecture)    # 6
-    build_savings(prs, 7, savings)              # 7
-    build_roadmap(prs, 8, roadmap)              # 8
-    # Slide 9: differentiation vs alternatives
+    build_aws_deployment(prs, 7, aws_arch)      # 7
+    build_aws_costs(prs, 8, cost_compare)       # 8
+    build_savings(prs, 9, savings)              # 9
+    build_roadmap(prs, 10, roadmap)             # 10
+    # Slide 11: differentiation vs alternatives
     diff = build_title_slide(
-        prs, 9,
+        prs, 11,
         "Frente a alternativas",
         "Lo que nos diferencia de otros proyectos del hackathon",
         "Foco en acción, no solo en visualización",
@@ -804,7 +1127,7 @@ def main() -> Path:
         ],
         size=18,
     )
-    build_closing(prs, 10)                      # 10
+    build_closing(prs, 12)                      # 12
 
     OUTPUT.parent.mkdir(parents=True, exist_ok=True)
     prs.save(OUTPUT)
