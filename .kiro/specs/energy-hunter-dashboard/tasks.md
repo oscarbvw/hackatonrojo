@@ -1,19 +1,34 @@
 # Implementation Plan: Energy Hunter Dashboard MVP
+<<<<<<< HEAD
  
 ## Overview
  
 This plan turns the Energy Hunter design into a TDD-driven, incremental Python build. Foundations come first (project scaffolding, dataclasses, Mock API state and endpoints), then the pure logic layer (validation, cost, anomaly detection, panic payload, poller), then the Streamlit UI, then the Kiro stub, and finally integration and accessibility verification.
  
+=======
+
+## Overview
+
+This plan turns the Energy Hunter design into a TDD-driven, incremental Python build. Foundations come first (project scaffolding, dataclasses, Mock API state and endpoints), then the pure logic layer (validation, cost, anomaly detection, panic payload, poller), then the Streamlit UI, then the Kiro stub, and finally integration and accessibility verification.
+
+>>>>>>> fff278cf87641df0e5688d98efeea69ec5a77893
 Conventions used in this plan:
 - **TDD per workspace standard**: every unit of logic has a test sub-task that comes before or alongside the implementation sub-task. Test sub-tasks are marked optional with `*` per the workflow rules — they are still authored first under TDD, but the marker preserves the "skip-for-MVP" affordance defined in the workflow.
 - **Property-based tests** (Hypothesis) map 1:1 to the 10 Correctness Properties in `design.md`.
 - **Responsive + WCAG 2.1 AA** tasks appear inline with the UI components they apply to, and again as a final accessibility audit task.
 - **Conventional Commits**: a suggested commit message is provided for each top-level task.
 - **Requirements references** point at granular acceptance criteria (e.g. `1.3`, `8.4`), not just user stories.
+<<<<<<< HEAD
  
 ## Tasks
  
 - [x] 1. Bootstrap the project skeleton, dependencies, and tooling
+=======
+
+## Tasks
+
+- [-] 1. Bootstrap the project skeleton, dependencies, and tooling
+>>>>>>> fff278cf87641df0e5688d98efeea69ec5a77893
   - Create the package layout described in `design.md` → "Module layout": `energy_hunter/{ui,core,clients,mock_api,data}/` with `__init__.py` files, plus top-level `app.py` placeholder, `tests/`, `pyproject.toml`, `.streamlit/config.toml`, and `README.md` stub.
   - Pin runtime deps in `pyproject.toml`: `streamlit`, `flask`, `pandas`, `altair`, `pydeck`, `requests`.
   - Pin dev deps: `pytest`, `pytest-cov`, `hypothesis`, `ruff`, `mypy`.
@@ -22,7 +37,11 @@ Conventions used in this plan:
   - _Requirements: 8.5_
   - _Design refs: "Module layout", "CI gates"_
   - _Suggested commit: `chore: scaffold energy_hunter package and tooling`_
+<<<<<<< HEAD
  
+=======
+
+>>>>>>> fff278cf87641df0e5688d98efeea69ec5a77893
 - [ ] 2. Define core dataclasses and the SessionStore protocol
   - [~] 2.1 Write unit tests for `core/models.py`
     - Verify equality, immutability of frozen dataclasses, default factories, and round-trip via `dataclasses.asdict` / `replace` for `Asset`, `Phase`, `Building`, `Reading`, `PriceTick`, `CostPoint`, `PanicPayload`, `PanicResult`.
@@ -40,7 +59,11 @@ Conventions used in this plan:
     - _Requirements: 1.2, 2.4_
     - _Design refs: "Building_Manager", "st.session_state shape"_
     - _Suggested commit: `feat: add SessionStore protocol with dict-based test double`_
+<<<<<<< HEAD
  
+=======
+
+>>>>>>> fff278cf87641df0e5688d98efeea69ec5a77893
 - [ ] 3. Implement Building_Manager with TDD-driven validation and CRUD
   - [~] 3.1 Write the property test for **Property 1: Building round-trip persistence**
     - **Property 1: Building round-trip persistence**
@@ -65,7 +88,11 @@ Conventions used in this plan:
     - Cover NORMAL ↔ ECO_MODE transitions, replacing an existing phase by id, and deletion of a nonexistent building (no-op vs. raise — match implementation).
     - _Requirements: 2.4, 5.4_
     - _Suggested commit: `test: add unit tests for phase upsert and status transitions`_
+<<<<<<< HEAD
  
+=======
+
+>>>>>>> fff278cf87641df0e5688d98efeea69ec5a77893
 - [ ] 4. Implement the Mock API Server (Smart Breaker, SIOS, and Eco endpoints)
   - [~] 4.1 Write the property test for **Property 8: Mock server state isolation and Eco reduction**
     - **Property 8: Mock server state isolation and 40% Eco reduction**
@@ -95,10 +122,17 @@ Conventions used in this plan:
   - [~] 4.5 Add a smoke test that boots the Flask app via `test_client` and asserts `/healthz` → 200
     - _Requirements: 8.5_
     - _Suggested commit: `test: add smoke test for mock api healthz endpoint`_
+<<<<<<< HEAD
  
 - [~] 5. Checkpoint — Foundations stable
   - Ensure all tests pass, ask the user if questions arise.
  
+=======
+
+- [~] 5. Checkpoint — Foundations stable
+  - Ensure all tests pass, ask the user if questions arise.
+
+>>>>>>> fff278cf87641df0e5688d98efeea69ec5a77893
 - [ ] 6. Implement HTTP clients for the Mock API
   - [~] 6.1 Write integration tests for `clients/breaker_client.py` and `clients/sios_client.py`
     - Use Flask's `test_client` (no real sockets) and assert the clients return well-formed `Reading` and `PriceTick` instances, propagate timeouts and 5xx as raised exceptions, and never lose data on malformed JSON (raise typed errors instead).
@@ -113,7 +147,11 @@ Conventions used in this plan:
     - `fetch_current_price(*, timeout_s=5.0) -> PriceTick`.
     - _Requirements: 3.3, 3.5_
     - _Suggested commit: `feat: add sios http client`_
+<<<<<<< HEAD
  
+=======
+
+>>>>>>> fff278cf87641df0e5688d98efeea69ec5a77893
 - [ ] 7. Implement pure logic: cost calculator, anomaly detector, panic payload builder
   - [~] 7.1 Write the property test for **Property 5: Cost formula**
     - **Property 5: Cost formula**
@@ -153,7 +191,11 @@ Conventions used in this plan:
     - `apply_eco_mode(building, selected_phase_ids)` mutates phase statuses to `ECO_MODE` (used after a successful webhook 2xx response).
     - _Requirements: 5.1, 5.3, 5.4_
     - _Suggested commit: `feat: add panic payload builder and panic-enabled phase filter`_
+<<<<<<< HEAD
  
+=======
+
+>>>>>>> fff278cf87641df0e5688d98efeea69ec5a77893
 - [ ] 8. Implement the Telemetry Poller with deterministic `tick()`
   - [~] 8.1 Write the property test for **Property 6: Telemetry tick semantics**
     - **Property 6: Telemetry tick semantics**
@@ -172,10 +214,17 @@ Conventions used in this plan:
     - Verify that a fake-clock advance by `30s` triggers exactly one `tick()` per active building and that two advances trigger exactly two ticks.
     - _Requirements: 3.1_
     - _Suggested commit: `test: add fake-clock test for 30s polling cadence`_
+<<<<<<< HEAD
  
 - [~] 9. Checkpoint — Pure logic + polling stable
   - Ensure all tests pass, ask the user if questions arise.
  
+=======
+
+- [~] 9. Checkpoint — Pure logic + polling stable
+  - Ensure all tests pass, ask the user if questions arise.
+
+>>>>>>> fff278cf87641df0e5688d98efeea69ec5a77893
 - [ ] 10. Implement the Kiro webhook stub and client (closing the panic loop)
   - [~] 10.1 Write the property test for the webhook half of **Property 7: Panic flow correctness**
     - **Property 7 (webhook half): fan-out, notification dispatch, and 6.4 logging**
@@ -200,7 +249,11 @@ Conventions used in this plan:
     - Provide a default `LoggingNotificationNode` for the demo and a test double that can be configured to raise.
     - _Requirements: 6.3, 6.4_
     - _Suggested commit: `feat: add Notification_Node abstraction with logging default`_
+<<<<<<< HEAD
  
+=======
+
+>>>>>>> fff278cf87641df0e5688d98efeea69ec5a77893
 - [ ] 11. Implement Streamlit UI: layout, building form, and Interactive Map
   - [~] 11.1 Implement `ui/layout.py` with responsive grid helpers and theme
     - `st.set_page_config(layout="wide")`; provide `three_column_layout()`, `two_column_layout()`, `single_column_layout()` helpers backed by `st.columns`.
@@ -241,7 +294,11 @@ Conventions used in this plan:
     - _Requirements: 1.4, 1.5, 4.4_
     - _Design refs: "Accessibility → Known deviations", "ui/map_view.py"_
     - _Suggested commit: `feat: add interactive map with anomaly overlay and accessible list`_
+<<<<<<< HEAD
  
+=======
+
+>>>>>>> fff278cf87641df0e5688d98efeea69ec5a77893
 - [ ] 12. Implement live charts and telemetry display
   - [~] 12.1 Write the property test for **Property 9: Chart data filtering and anomaly styling**
     - **Property 9: Chart data filtering and anomaly styling**
@@ -263,7 +320,11 @@ Conventions used in this plan:
     - _Requirements: 3.2, 3.5, 4.3, 4.5_
     - _Design refs: "Error Handling → User-visible error surfaces"_
     - _Suggested commit: `feat: add telemetry panel with api status pill and anomaly highlighting`_
+<<<<<<< HEAD
  
+=======
+
+>>>>>>> fff278cf87641df0e5688d98efeea69ec5a77893
 - [ ] 13. Implement the Panic Panel UI and wire it to the webhook
   - [~] 13.1 Write `AppTest` examples for the panic panel
     - Configure a building with three phases (two Panic-Enabled). Assert only the Panic-Enabled phases are rendered (Req 5.1). Confirm with a 2xx mocked response → assert selected phases flip to `ECO_MODE` (Req 5.4). Confirm with a non-2xx mocked response → assert phase statuses are unchanged and an error banner is shown (Req 5.5).
@@ -276,7 +337,11 @@ Conventions used in this plan:
     - _Requirements: 5.1, 5.2, 5.3, 5.4, 5.5_
     - _Design refs: "Panic flow + Eco Mode propagation"_
     - _Suggested commit: `feat: add accessible panic panel with confirm flow and error handling`_
+<<<<<<< HEAD
  
+=======
+
+>>>>>>> fff278cf87641df0e5688d98efeea69ec5a77893
 - [~] 14. Wire `app.py`: assemble pages, start the poller, expose configuration
   - Implement `app.py` to compose the responsive layout: sidebar (`render_sidebar`) holds the building list + add-building form; main area renders the map, telemetry, charts, and panic panel for the active building.
   - Initialize `st.session_state` with the shape from the design (`buildings`, `active_building_id`, `telemetry`, `cost_series`, `anomalies`, `last_error`, `last_known_telemetry`).
@@ -286,7 +351,11 @@ Conventions used in this plan:
   - _Requirements: 1.4, 1.5, 3.1, 3.2, 4.3, 4.4, 4.5, 5.1_
   - _Design refs: "Architecture → Process & runtime model", "st.session_state shape"_
   - _Suggested commit: `feat: wire streamlit app entry point with poller and session bootstrap`_
+<<<<<<< HEAD
  
+=======
+
+>>>>>>> fff278cf87641df0e5688d98efeea69ec5a77893
 - [ ] 15. Add end-to-end integration tests across the full local stack
   - [~] 15.1 Add → poll → chart scenario
     - Register a building via `BuildingManager`, advance the fake clock by 30 s, assert telemetry and cost deques append exactly one point each per phase and that the chart frames reflect the new data.
@@ -304,7 +373,11 @@ Conventions used in this plan:
     - Simulate a Mock API 500 response; assert `last_error["breaker"]` is set, the API status pill turns red, and `last_known_telemetry` is preserved. Clear the error; assert the pill returns to green within one tick and the live region announces the recovery.
     - _Requirements: 3.5_
     - _Suggested commit: `test: add integration test for api error resilience`_
+<<<<<<< HEAD
  
+=======
+
+>>>>>>> fff278cf87641df0e5688d98efeea69ec5a77893
 - [ ] 16. Accessibility and responsive verification
   - [~] 16.1 Add an automated `axe-core` audit via Playwright against the running Streamlit app
     - Boot `streamlit run app.py` against the Mock API; run `axe-core` over the main page; fail the test on `serious` or `critical` violations.
@@ -320,14 +393,27 @@ Conventions used in this plan:
     - _Requirements: WCAG 2.1 AA per workspace standard_
     - _Design refs: "Accessibility → Verification"_
     - _Suggested commit: `docs: add keyboard and screen-reader walkthrough notes`_
+<<<<<<< HEAD
  
 - [~] 17. Final checkpoint — Ensure all tests pass
   - Ensure all tests pass, ask the user if questions arise.
  
 ## Notes
  
+=======
+
+- [~] 17. Final checkpoint — Ensure all tests pass
+  - Ensure all tests pass, ask the user if questions arise.
+
+## Notes
+
+>>>>>>> fff278cf87641df0e5688d98efeea69ec5a77893
 - Tasks marked with `*` are optional and can be skipped for a faster MVP. Under the workspace TDD standard the test sub-tasks are still authored *before* their corresponding implementation; the `*` marker only governs whether the workflow runner skips them.
 - Each task references granular acceptance criteria from `requirements.md` (e.g. `1.3`, `8.4`) for traceability.
 - Each property-based test sub-task maps 1:1 to a Correctness Property in `design.md`; properties are placed close to the implementation they validate to catch regressions early.
 - Checkpoints at tasks 5, 9, and 17 give natural stopping points to confirm direction with the user.
+<<<<<<< HEAD
 - Suggested Conventional Commits messages follow the workspace standard (`feat:`, `fix:`, `test:`, `docs:`, `style:`, `chore:`).
+=======
+- Suggested Conventional Commits messages follow the workspace standard (`feat:`, `fix:`, `test:`, `docs:`, `style:`, `chore:`).
+>>>>>>> fff278cf87641df0e5688d98efeea69ec5a77893
