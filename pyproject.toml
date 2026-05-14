@@ -1,0 +1,128 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "energy-hunter"
+version = "0.1.0"
+description = "Energy Hunter — B2B Energy Management Dashboard MVP (Streamlit + Mock API)."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [{ name = "Energy Hunter Team" }]
+keywords = ["energy", "streamlit", "dashboard", "mock-api"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Operating System :: OS Independent",
+    "Framework :: Flask",
+]
+
+# Pinned runtime dependencies (see design.md → "Module layout" / runtime stack).
+dependencies = [
+    "streamlit==1.38.0",
+    "flask==3.0.3",
+    "pandas==2.2.2",
+    "altair==5.4.1",
+    "pydeck==0.9.1",
+    "requests==2.32.3",
+]
+
+[project.optional-dependencies]
+# Pinned dev dependencies for tests, lint, and type-checks.
+dev = [
+    "pytest==8.3.3",
+    "pytest-cov==5.0.0",
+    "hypothesis==6.112.1",
+    "ruff==0.6.9",
+    "mypy==1.11.2",
+]
+
+[project.urls]
+Homepage = "https://example.invalid/energy-hunter"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["energy_hunter*"]
+exclude = ["tests*"]
+
+# -----------------------------------------------------------------------------
+# pytest
+# -----------------------------------------------------------------------------
+[tool.pytest.ini_options]
+minversion = "8.0"
+# Workspace root is the rootdir; tests live under tests/.
+testpaths = ["tests"]
+addopts = [
+    "-ra",
+    "--strict-markers",
+    "--strict-config",
+]
+filterwarnings = [
+    "error",
+    # Streamlit and pandas can emit deprecation chatter we don't want to treat as failures.
+    "ignore::DeprecationWarning:streamlit.*",
+    "ignore::DeprecationWarning:pandas.*",
+]
+
+# -----------------------------------------------------------------------------
+# ruff
+# -----------------------------------------------------------------------------
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+src = ["energy_hunter", "tests"]
+extend-exclude = [".kiro", "build", "dist"]
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # pyflakes
+    "I",   # isort
+    "B",   # bugbear
+    "UP",  # pyupgrade
+    "SIM", # simplify
+    "RUF", # ruff-specific
+]
+ignore = [
+    "E501", # line length is enforced by formatter
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["B011"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+
+# -----------------------------------------------------------------------------
+# mypy
+# -----------------------------------------------------------------------------
+# Default config: only check core/ and clients/ under strict mode (per design "CI gates").
+# UI / mock_api modules are intentionally excluded from --strict at the workspace level
+# because they are mostly framework wiring; they still get baseline type checks via ruff.
+[tool.mypy]
+python_version = "3.11"
+files = ["energy_hunter/core", "energy_hunter/clients"]
+strict = true
+warn_unused_configs = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+warn_return_any = true
+no_implicit_reexport = true
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+check_untyped_defs = true
+disallow_untyped_decorators = true
+show_error_codes = true
+pretty = true
+
+[[tool.mypy.overrides]]
+module = ["energy_hunter.core.*", "energy_hunter.clients.*"]
+strict = true
+
+[[tool.mypy.overrides]]
+# Third-party libs without complete type stubs.
+module = ["pydeck.*", "altair.*"]
+ignore_missing_imports = true
