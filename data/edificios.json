@@ -1,0 +1,26 @@
+[
+  {
+    "id": "edificio_01",
+    "nombre": "Edificio 01",
+    "descripcion": "",
+    "superficie_m2": 1000,
+    "ubicacion": "Campus principal",
+    "activo": true
+  },
+  {
+    "id": "edificio_02",
+    "nombre": "Edificio 02",
+    "descripcion": "",
+    "superficie_m2": 1000,
+    "ubicacion": "Campus principal",
+    "activo": true
+  },
+  {
+    "id": "edificio_03",
+    "nombre": "Edificio 03",
+    "descripcion": "",
+    "superficie_m2": 1000,
+    "ubicacion": "Campus principal",
+    "activo": true
+  }
+]

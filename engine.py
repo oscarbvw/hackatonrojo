@@ -22,6 +22,10 @@ ANOMALIA_KW      = 2.0    # kW/diferencial fuera de horario → alerta ANOMALIA
 # ── Estado de pánico en memoria ───────────────────────────────────────────────
 _panic: dict[str, bool] = {}
 
+# ── Cortes manuales por diferencial ──────────────────────────────────────────
+# Clave: "{id_edificio}/{id_diferencial}"
+_diff_off: set[str] = set()
+
 # ── CSV histórico ─────────────────────────────────────────────────────────────
 CSV_PATH = "data/historico_consumo.csv"
 _CSV_COLS = [
@@ -32,13 +36,14 @@ _CSV_COLS = [
 ]
 
 # Prioridad para escalar status al nivel de edificio
-_PRIO = {"OK": 0, "APAGADO": 1, "PRECIO_ALTO": 2, "ANOMALIA": 3, "PANICO": 4}
+_PRIO = {"OK": 0, "APAGADO": 1, "CORTADO": 1, "PRECIO_ALTO": 2, "ANOMALIA": 3, "PANICO": 4}
 
-# Textos de alerta por tipo (el front los muestra junto al consumo)
+# Textos de alerta por tipo
 _TEXTOS_ALERTA = {
-    "ANOMALIA":    "⚠️ Consumo anómalo detectado: se ha superado el umbral de {umbral} kW fuera de horario laboral ({consumo} kW activos).",
+    "ANOMALIA":    "⚠️ Consumo anómalo: superado el umbral de {umbral} kW fuera de horario laboral ({consumo} kW activos).",
     "PRECIO_ALTO": "💸 Precio de mercado elevado: {precio} €/kWh. Considera diferir cargas no críticas.",
     "PANICO":      "🔴 Pánico energético activo: circuito cortado remotamente.",
+    "CORTADO":     "✂️ Diferencial cortado manualmente por el operador.",
 }
 
 
@@ -65,8 +70,10 @@ def _hora_baja_actividad() -> bool:
     return ahora.weekday() >= 5 or ahora.hour < 7 or ahora.hour >= 22
 
 
-def _calcular_status(activo: bool, consumo_kw: float, precio_kwh: float, eid: str) -> str:
+def _calcular_status(activo: bool, consumo_kw: float, precio_kwh: float,
+                     eid: str, cortado_manual: bool = False) -> str:
     if _panic.get(eid):                                        return "PANICO"
+    if cortado_manual:                                         return "CORTADO"
     if not activo:                                             return "APAGADO"
     if _hora_baja_actividad() and consumo_kw > ANOMALIA_KW:   return "ANOMALIA"
     if precio_kwh > PRECIO_ALTO_KWH:                          return "PRECIO_ALTO"
@@ -74,13 +81,12 @@ def _calcular_status(activo: bool, consumo_kw: float, precio_kwh: float, eid: st
 
 
 def _texto_alerta(status: str, consumo_kw: float, precio_kwh: float) -> str | None:
-    """Texto legible para mostrar junto al consumo en la UI."""
     if status == "ANOMALIA":
         return _TEXTOS_ALERTA["ANOMALIA"].format(umbral=ANOMALIA_KW, consumo=consumo_kw)
     if status == "PRECIO_ALTO":
         return _TEXTOS_ALERTA["PRECIO_ALTO"].format(precio=round(precio_kwh, 4))
-    if status == "PANICO":
-        return _TEXTOS_ALERTA["PANICO"]
+    if status in ("PANICO", "CORTADO"):
+        return _TEXTOS_ALERTA[status]
     return None
 
 
@@ -95,12 +101,15 @@ def _build_snapshot() -> dict:
     periodo    = _periodo_tarifario()
     ts         = datos_dev["snapshot_time"]
 
-    # ── Paso 1: consumo total por edificio ────────────────────────────────────
+    # ── Paso 1: consumo total por edificio (respetando overrides) ────────────
     consumo_edificio: dict[str, float] = {}
     num_diffs:        dict[str, int]   = {}
     for dev in datos_dev["dispositivos"]:
-        eid    = dev["id_edificio"]
-        activo = dev["estado"] == "CERRADO" and not _panic.get(eid)
+        eid  = dev["id_edificio"]
+        key  = f"{eid}/{dev['id_diferencial']}"
+        activo = (dev["estado"] == "CERRADO"
+                  and not _panic.get(eid)
+                  and key not in _diff_off)
         consumo_edificio[eid] = round(
             consumo_edificio.get(eid, 0.0) + (dev["potencia_kw"] if activo else 0.0), 3
         )
@@ -112,41 +121,43 @@ def _build_snapshot() -> dict:
 
     if precio_kwh > PRECIO_ALTO_KWH:
         alertas.append({
-            "tipo":      "PRECIO_ALTO",
-            "severidad": "WARNING",
-            "id_edificio":    None,
-            "id_diferencial": None,
-            "texto":     _texto_alerta("PRECIO_ALTO", 0, precio_kwh),
+            "tipo": "PRECIO_ALTO", "severidad": "WARNING",
+            "id_edificio": None, "id_diferencial": None,
+            "texto": _texto_alerta("PRECIO_ALTO", 0, precio_kwh),
         })
 
     for dev in datos_dev["dispositivos"]:
-        eid        = dev["id_edificio"]
-        activo     = dev["estado"] == "CERRADO" and not _panic.get(eid)
+        eid            = dev["id_edificio"]
+        key            = f"{eid}/{dev['id_diferencial']}"
+        cortado_manual = key in _diff_off
+        activo         = (dev["estado"] == "CERRADO"
+                          and not _panic.get(eid)
+                          and not cortado_manual)
         consumo_kw = round(dev["potencia_kw"], 3) if activo else 0.0
-        status     = _calcular_status(activo, consumo_kw, precio_kwh, eid)
+        status     = _calcular_status(activo, consumo_kw, precio_kwh, eid, cortado_manual)
         coste_h    = round(consumo_kw * precio_kwh, 4)
         c_edif     = consumo_edificio[eid]
-
-        texto = _texto_alerta(status, consumo_kw, precio_kwh)
+        texto      = _texto_alerta(status, consumo_kw, precio_kwh)
 
         diferenciales.append({
             "id_edificio":            eid,
             "id_diferencial":         dev["id_diferencial"],
             "id_fase":                dev["id_fase"],
             "activo":                 activo,
+            "cortado_manualmente":    cortado_manual,
             "consumo_diferencial_kw": consumo_kw,
-            "corriente_a":            dev["corriente_a"]      if activo else 0.0,
-            "tension_v":              dev["tension_v"]        if activo else 0.0,
-            "factor_potencia":        dev["factor_potencia"]  if activo else 0.0,
+            "corriente_a":            dev["corriente_a"]     if activo else 0.0,
+            "tension_v":              dev["tension_v"]       if activo else 0.0,
+            "factor_potencia":        dev["factor_potencia"] if activo else 0.0,
             "coste_hora_eur":         coste_h,
             "consumo_edificio_kw":    c_edif,
             "num_diferenciales":      num_diffs[eid],
             "pct_sobre_edificio":     round(consumo_kw / c_edif * 100, 2) if c_edif > 0 else 0.0,
             "status":                 status,
-            "texto_alerta":           texto,   # None si status == OK o APAGADO
+            "texto_alerta":           texto,
         })
 
-        if status in ("ANOMALIA", "PANICO"):
+        if status in ("ANOMALIA", "PANICO", "CORTADO"):
             alertas.append({
                 "tipo":           status,
                 "severidad":      "CRITICAL" if status == "PANICO" else "WARNING",
@@ -270,6 +281,22 @@ def panico_energetico(id_edificio: str | None = None) -> dict:
     return {"accion": "PANICO_ENERGETICO", "edificios_afectados": targets, "timestamp": datetime.now().isoformat()}
 
 
+def toggle_diferencial(id_edificio: str, id_diferencial: str) -> dict:
+    """
+    Alterna el corte manual de un diferencial individual.
+    Si estaba activo → lo corta (CORTADO). Si estaba cortado → lo reactiva.
+    """
+    key = f"{id_edificio}/{id_diferencial}"
+    if key in _diff_off:
+        _diff_off.discard(key)
+        accion = "ACTIVAR_DIFERENCIAL"
+    else:
+        _diff_off.add(key)
+        accion = "CORTAR_DIFERENCIAL"
+    return {"accion": accion, "id_edificio": id_edificio,
+            "id_diferencial": id_diferencial, "timestamp": datetime.now().isoformat()}
+
+
 def desactivar_panico(id_edificio: str | None = None) -> dict:
     """Restaura el estado normal tras un pánico energético."""
     targets = (
@@ -279,6 +306,20 @@ def desactivar_panico(id_edificio: str | None = None) -> dict:
     for bid in targets:
         _panic[bid] = False
     return {"accion": "RESTAURAR_NORMAL", "edificios_afectados": targets, "timestamp": datetime.now().isoformat()}
+
+
+def detectar_anomalias() -> dict:
+    """
+    Devuelve los diferenciales y edificios con STATUS fuera de OK/APAGADO.
+    Útil para el botón 'Detectar Anomalías' del dashboard.
+    """
+    snap = _build_snapshot()
+    return {
+        "dispositivos": [d for d in snap["diferenciales"]
+                         if d["status"] not in ("OK", "APAGADO")],
+        "edificios":    [e for e in snap["edificios"]
+                         if e["status"] not in ("OK", "APAGADO")],
+    }
 
 
 def ingest() -> dict:

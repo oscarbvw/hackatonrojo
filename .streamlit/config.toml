@@ -1,33 +1,13 @@
-# Energy Hunter — Streamlit theme & runtime config.
-#
-# WCAG 2.1 AA targets:
-#   - Foreground/background contrast ≥ 4.5:1 (text)
-#   - Non-text/UI components ≥ 3:1 (chart palette, borders, focus rings)
-#
-# Verified pairs (computed against #FFFFFF background):
-#   #1F2937 on #FFFFFF → 12.6:1   (textColor)
-#   #0B5394 on #FFFFFF →  6.9:1   (primaryColor — links, primary buttons)
-#   #B91C1C on #FFFFFF →  6.5:1   (error pill — used by ui/telemetry.py)
-#
-# Adjust with care: any change here should be re-checked with a contrast
-# checker before being merged.
-
 [theme]
-base = "light"
-primaryColor = "#0B5394"            # accessible blue for primary actions / links
-backgroundColor = "#FFFFFF"
-secondaryBackgroundColor = "#F3F4F6"
-textColor = "#1F2937"
-font = "sans serif"
+primaryColor             = "#104F3A"
+backgroundColor          = "#F5EFE0"
+secondaryBackgroundColor = "#EDE6D3"
+textColor                = "#1F2A24"
+font                     = "sans serif"
 
 [server]
-headless = true
-runOnSave = false
-fileWatcherType = "auto"
+headless         = false
+port             = 8501
 
 [browser]
 gatherUsageStats = false
-
-[client]
-toolbarMode = "minimal"
-showErrorDetails = true
