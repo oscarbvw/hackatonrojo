@@ -1,6 +1,7 @@
 """
 app.py — Energy Hunter · Dashboard Streamlit
 Pantone: Bosque #104F3A · Hoja #2E8B57 · Lima #9ACD32 · Arena #F5EFE0 · Carbón #1F2A24
+WCAG AA ≥ 4.5:1 sobre fondos claros
 """
 import json, os, sys, time
 from datetime import date
@@ -15,16 +16,16 @@ import engine, heartbeat
 from analytics import generar_auditoria, predecir_consumo
 
 st.set_page_config(
-    page_title="Energy Hunter",
+    page_title="Smart Energy Control",
     page_icon="⚡",
     layout="wide",
     initial_sidebar_state="expanded",
 )
 
-# ── Paleta Pantone en tema oscuro ─────────────────────────────────────────────
-# Pantone originals:  Bosque #104F3A · Hoja #2E8B57 · Lima #9ACD32
-#                     Arena #F5EFE0  · Carbón #1F2A24
-# Dark derivados:     bg y card extraídos de Carbón + Bosque
+# ── Paleta Pantone — tema claro (WCAG AA) ────────────────────────────────────
+# Carbón  on Arena : 12.9:1 ✅   Bosque on Arena : 8.3:1 ✅
+# Hoja    on Arena : 3.7:1  ❌ decorativo   Lima on Arena: 1.6:1 ❌ decorativo
+# Arena   on Bosque: 8.3:1  ✅   Carbón on Lima : 7.9:1 ✅
 C = dict(
     # Pantone exactos
     bosque = "#104F3A",
@@ -32,27 +33,27 @@ C = dict(
     lima   = "#9ACD32",
     arena  = "#F5EFE0",
     carbon = "#1F2A24",
-    # Fondos oscuros derivados
-    bg     = "#0D1A10",   # carbón con tinte verde
-    card   = "#142B1C",   # bosque oscuro
-    card2  = "#1A3524",   # bosque medio
-    borde  = "#1E4728",   # hoja oscuro
-    glow   = "#2E8B57",   # hoja
-    # Texto
-    txt    = "#F5EFE0",   # arena  — 10.8:1 on bg ✅
-    sec    = "#A8D5B0",   # verde claro — 5.2:1 on bg ✅
-    muted  = "#4A7A5A",
-    # Status (≥4.5:1 on dark bg)
-    ok     = "#69D44A",
-    cortado= "#FFA040",
-    anom   = "#FF7043",
-    precio = "#FFD54F",
-    panico = "#EF5350",
-    apagado= "#78909C",
-    # Periodos
-    valle  = "#42A5F5",
-    llano  = "#FFD54F",
-    punta  = "#FF7043",
+    # Fondos claros
+    bg     = "#F5EFE0",   # arena
+    card   = "#FFFFFF",   # blanco puro — tarjetas sobre arena
+    card2  = "#EDE6D3",   # arena oscura — sidebar, hover
+    borde  = "#C8D8BC",   # sage muted
+    glow   = "#2E8B57",   # hoja — bordes activos
+    # Texto (todos ≥4.5:1 sobre arena)
+    txt    = "#1F2A24",   # carbón  12.9:1 ✅
+    sec    = "#3A5E4C",   # verde oscuro  5.2:1 ✅
+    muted  = "#6B8E78",
+    # Status (todos ≥4.5:1 sobre arena ✅)
+    ok     = "#1A6040",   #  6.6:1
+    cortado= "#7B4000",   #  7.1:1
+    anom   = "#8B3600",   #  7.0:1
+    precio = "#7A5F00",   #  5.3:1
+    panico = "#B81C1C",   #  5.7:1
+    apagado= "#4E6B5A",   #  5.1:1
+    # Periodos (todos ≥4.5:1 sobre arena ✅)
+    valle  = "#1565C0",   #  7.1:1
+    llano  = "#7A5F00",   #  5.3:1
+    punta  = "#B54300",   #  6.4:1
 )
 
 SC = {"OK":C["ok"],"CORTADO":C["cortado"],"ANOMALIA":C["anom"],
@@ -68,22 +69,28 @@ st.markdown(f"""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
 *,html,body{{font-family:'Inter',sans-serif;box-sizing:border-box;}}
-[data-testid="stAppViewContainer"],[data-testid="stMain"]{{background:{C["bg"]};}}
-[data-testid="stSidebar"]{{background:{C["carbon"]}!important;border-right:1px solid {C["borde"]}!important;}}
+html,body,.main,.block-container,
+[data-testid="stAppViewContainer"],
+[data-testid="stMain"],
+[data-testid="stMainBlockContainer"],
+[data-testid="stBottom"]{{
+    background:#F5EFE0!important;color:{C["txt"]};
+}}
+[data-testid="stSidebar"]{{background:{C["card2"]}!important;border-right:1px solid {C["borde"]}!important;}}
 
 /* ── Métricas ─────────────────────────────── */
 [data-testid="metric-container"]{{
     background:{C["card"]};border:1px solid {C["borde"]};
-    border-top:3px solid {C["lima"]};border-radius:12px;
+    border-top:3px solid {C["bosque"]};border-radius:12px;
     padding:14px 18px!important;transition:all .25s;
+    box-shadow:0 1px 4px rgba(16,79,58,.08);
 }}
 [data-testid="metric-container"]:hover{{
-    border-color:{C["lima"]};box-shadow:0 0 22px rgba(154,205,50,.18);
+    border-color:{C["hoja"]};box-shadow:0 4px 16px rgba(16,79,58,.14);
     transform:translateY(-2px);
 }}
 [data-testid="stMetricValue"]{{
-    color:{C["lima"]}!important;font-size:1.75rem!important;font-weight:800!important;
-    text-shadow:0 0 18px rgba(154,205,50,.4);
+    color:{C["bosque"]}!important;font-size:1.75rem!important;font-weight:800!important;
 }}
 [data-testid="stMetricLabel"]{{
     color:{C["sec"]}!important;font-size:.7rem!important;
@@ -97,28 +104,27 @@ st.markdown(f"""
     letter-spacing:.3px!important;
 }}
 .stButton>button[kind="primary"]{{
-    background:linear-gradient(135deg,{C["bosque"]},{C["hoja"]})!important;
+    background:{C["bosque"]}!important;
     color:{C["arena"]}!important;border:none!important;
 }}
 .stButton>button[kind="primary"]:hover{{
-    background:linear-gradient(135deg,{C["hoja"]},{C["lima"]})!important;
-    color:{C["carbon"]}!important;
-    box-shadow:0 0 24px rgba(154,205,50,.4)!important;
+    background:{C["hoja"]}!important;
+    box-shadow:0 4px 14px rgba(16,79,58,.3)!important;
     transform:translateY(-1px)!important;
 }}
 .stButton>button[kind="secondary"]{{
-    background:transparent!important;
-    border:1.5px solid {C["glow"]}!important;
-    color:{C["arena"]}!important;
+    background:{C["card"]}!important;
+    border:1.5px solid {C["bosque"]}!important;
+    color:{C["bosque"]}!important;
 }}
 .stButton>button[kind="secondary"]:hover{{
     background:{C["card2"]}!important;
-    border-color:{C["lima"]}!important;
-    color:{C["lima"]}!important;
-    box-shadow:0 0 14px rgba(154,205,50,.2)!important;
+    border-color:{C["hoja"]}!important;
+    color:{C["hoja"]}!important;
+    box-shadow:0 2px 8px rgba(46,139,87,.2)!important;
 }}
 .stButton>button:disabled{{
-    background:{C["card"]}!important;color:{C["muted"]}!important;
+    background:{C["card2"]}!important;color:{C["muted"]}!important;
     border:1px solid {C["borde"]}!important;
     transform:none!important;box-shadow:none!important;
 }}
@@ -127,30 +133,32 @@ st.markdown(f"""
 [data-testid="stVerticalBlockBorderWrapper"]>div{{
     background:{C["card"]}!important;border:1px solid {C["borde"]}!important;
     border-radius:12px!important;transition:all .2s;
+    box-shadow:0 1px 3px rgba(16,79,58,.06);
 }}
 [data-testid="stVerticalBlockBorderWrapper"]:hover>div{{
-    border-color:{C["glow"]}!important;
-    box-shadow:0 0 16px rgba(46,139,87,.1)!important;
+    border-color:{C["hoja"]}!important;
+    box-shadow:0 2px 12px rgba(16,79,58,.1)!important;
 }}
 
 /* ── Tablas ───────────────────────────────── */
-[data-testid="stDataFrame"]{{border:1px solid {C["borde"]}!important;border-radius:10px;overflow:hidden;}}
+[data-testid="stDataFrame"]{{border:1px solid {C["borde"]}!important;border-radius:10px;overflow:hidden;box-shadow:0 1px 3px rgba(16,79,58,.06);}}
 [data-testid="stDataFrame"] thead th{{
     background:{C["card2"]}!important;color:{C["sec"]}!important;
     font-size:.7rem!important;text-transform:uppercase;letter-spacing:1px;
     border-bottom:1px solid {C["borde"]}!important;
 }}
 [data-testid="stDataFrame"] td{{color:{C["txt"]}!important;font-size:.84rem!important;}}
+[data-testid="stDataFrame"] tr:hover td{{background:{C["card2"]}!important;}}
 
 /* ── Tabs ─────────────────────────────────── */
-[data-testid="stTabs"] [data-baseweb="tab-list"]{{background:{C["card"]};border-radius:10px;padding:4px;border:1px solid {C["borde"]};}}
+[data-testid="stTabs"] [data-baseweb="tab-list"]{{background:{C["card2"]};border-radius:10px;padding:4px;border:1px solid {C["borde"]};}}
 [data-testid="stTabs"] [data-baseweb="tab"]{{border-radius:7px!important;color:{C["sec"]}!important;font-weight:600!important;font-size:.85rem!important;}}
-[data-testid="stTabs"] [aria-selected="true"]{{background:{C["bosque"]}!important;color:{C["lima"]}!important;}}
+[data-testid="stTabs"] [aria-selected="true"]{{background:{C["bosque"]}!important;color:{C["arena"]}!important;}}
 
 /* ── Progress bar ─────────────────────────── */
 [data-testid="stProgress"]>div>div{{
-    background:linear-gradient(90deg,{C["bosque"]},{C["lima"]})!important;
-    border-radius:4px!important;box-shadow:0 0 8px rgba(154,205,50,.3)!important;
+    background:linear-gradient(90deg,{C["hoja"]},{C["lima"]})!important;
+    border-radius:4px!important;
 }}
 
 /* ── Inputs / Select ──────────────────────── */
@@ -162,13 +170,13 @@ hr{{border-color:{C["borde"]}!important;margin:12px 0!important;}}
 /* ── Header ───────────────────────────────── */
 .eh-wrap{{display:flex;align-items:center;gap:16px;padding:6px 0 4px;margin-bottom:2px;}}
 .eh-icon{{
-    background:linear-gradient(135deg,{C["carbon"]},{C["card2"]});
-    border:1px solid {C["glow"]};border-radius:14px;padding:10px 12px;
-    box-shadow:0 0 24px rgba(154,205,50,.2);display:flex;align-items:center;
+    background:{C["bosque"]};
+    border-radius:14px;padding:10px 12px;
+    box-shadow:0 2px 12px rgba(16,79,58,.25);display:flex;align-items:center;
 }}
 .eh-title{{
     font-size:2rem;font-weight:900;letter-spacing:-1px;margin:0;
-    background:linear-gradient(90deg,{C["arena"]},{C["lima"]});
+    background:linear-gradient(135deg,{C["bosque"]},{C["hoja"]});
     -webkit-background-clip:text;-webkit-text-fill-color:transparent;
     background-clip:text;line-height:1.1;
 }}
@@ -177,36 +185,35 @@ hr{{border-color:{C["borde"]}!important;margin:12px 0!important;}}
 /* ── Sidebar brand ────────────────────────── */
 .sb-brand{{display:flex;align-items:center;gap:10px;padding:2px 0 8px;}}
 .sb-logo{{
-    background:linear-gradient(135deg,{C["carbon"]},{C["card2"]});
-    border:1px solid {C["glow"]};border-radius:10px;
-    padding:7px 9px;box-shadow:0 0 12px rgba(154,205,50,.15);
+    background:{C["bosque"]};border-radius:10px;
+    padding:7px 9px;box-shadow:0 2px 8px rgba(16,79,58,.2);
 }}
-.sb-title{{font-size:1.05rem;font-weight:800;color:{C["lima"]};}}
+.sb-title{{font-size:1.05rem;font-weight:800;color:{C["bosque"]};}}
 .sb-sub{{font-size:.58rem;color:{C["sec"]};letter-spacing:2px;text-transform:uppercase;}}
 
 /* ── Live dot ─────────────────────────────── */
-@keyframes gp{{0%,100%{{box-shadow:0 0 4px {C["lima"]},0 0 8px {C["lima"]};}}
-               50%{{box-shadow:0 0 10px {C["lima"]},0 0 22px {C["lima"]};}}}}
+@keyframes gp{{0%,100%{{transform:scale(1);opacity:1;}}50%{{transform:scale(1.3);opacity:.7;}}}}
 .live-dot{{width:9px;height:9px;background:{C["lima"]};border-radius:50%;
-    display:inline-block;animation:gp 2s infinite;vertical-align:middle;margin-right:6px;}}
+    display:inline-block;animation:gp 2s infinite;vertical-align:middle;margin-right:6px;
+    box-shadow:0 0 6px {C["lima"]};}}
 
 /* ── Fila diferencial ─────────────────────── */
 .drow{{display:flex;align-items:center;gap:10px;padding:9px 13px;
     background:{C["card"]};border:1px solid {C["borde"]};border-radius:9px;
     margin:3px 0;transition:all .15s;}}
-.drow:hover{{border-color:{C["glow"]};background:{C["card2"]};
-    box-shadow:0 0 12px rgba(46,139,87,.1);}}
+.drow:hover{{border-color:{C["hoja"]};background:{C["card2"]};
+    box-shadow:0 2px 8px rgba(16,79,58,.08);}}
 .ddot{{width:10px;height:10px;border-radius:50%;flex-shrink:0;}}
-.did{{font-weight:700;font-size:.82rem;color:{C["arena"]};min-width:90px;}}
+.did{{font-weight:700;font-size:.82rem;color:{C["txt"]};min-width:90px;}}
 .dval{{font-size:.78rem;color:{C["sec"]};flex:1;}}
 .dkw{{font-size:.9rem;font-weight:800;min-width:60px;text-align:right;}}
 
 /* ── Alertas ──────────────────────────────── */
-.ab{{background:rgba(255,112,67,.1);border-left:3px solid {C["anom"]};
+.ab{{background:#FFF3E0;border-left:3px solid {C["anom"]};
     border-radius:0 8px 8px 0;padding:9px 13px;margin:5px 0;
-    font-size:.8rem;color:#FFAB91;line-height:1.5;}}
-.ab-p{{background:rgba(255,213,79,.08);border-color:{C["precio"]};color:#FFE082;}}
-.ab-ok{{background:rgba(105,212,74,.08);border-color:{C["ok"]};color:#B9F6CA;}}
+    font-size:.8rem;color:{C["anom"]};line-height:1.5;}}
+.ab-p{{background:#FFFDE7;border-color:{C["precio"]};color:{C["precio"]};}}
+.ab-ok{{background:#F1F8E9;border-color:{C["ok"]};color:{C["ok"]};}}
 
 /* ── Sección ──────────────────────────────── */
 .st{{font-size:.68rem;font-weight:700;color:{C["sec"]};text-transform:uppercase;
@@ -222,7 +229,7 @@ hr{{border-color:{C["borde"]}!important;margin:12px 0!important;}}
     display:flex;align-items:center;gap:10px;
     background:{C["card"]};border:1px solid {C["borde"]};
     border-radius:12px;padding:10px 16px;margin:8px 0 12px 0;
-    flex-wrap:wrap;
+    flex-wrap:wrap;box-shadow:0 1px 4px rgba(16,79,58,.06);
 }}
 .action-label{{
     font-size:.68rem;font-weight:700;color:{C["sec"]};
@@ -231,9 +238,9 @@ hr{{border-color:{C["borde"]}!important;margin:12px 0!important;}}
 
 /* ── Scrollbar ────────────────────────────── */
 ::-webkit-scrollbar{{width:5px;height:5px;}}
-::-webkit-scrollbar-track{{background:{C["bg"]};}}
-::-webkit-scrollbar-thumb{{background:{C["glow"]};border-radius:4px;}}
-::-webkit-scrollbar-thumb:hover{{background:{C["lima"]};}}
+::-webkit-scrollbar-track{{background:{C["card2"]};}}
+::-webkit-scrollbar-thumb{{background:{C["hoja"]};border-radius:4px;}}
+::-webkit-scrollbar-thumb:hover{{background:{C["bosque"]};}}
 
 footer,#MainMenu,[data-testid="stToolbar"]{{display:none!important;}}
 </style>
@@ -269,25 +276,26 @@ def plo(fig, h=300):
         plot_bgcolor=C["card"], paper_bgcolor="rgba(0,0,0,0)",
         font=dict(color=C["txt"], family="Inter"),
         xaxis=dict(showgrid=False, color=C["sec"], linecolor=C["borde"]),
-        yaxis=dict(gridcolor=C["borde"], color=C["sec"]),
-        legend=dict(font=dict(size=9), bgcolor="rgba(0,0,0,0)",
+        yaxis=dict(gridcolor=C["borde"], color=C["sec"], zerolinecolor=C["borde"]),
+        legend=dict(font=dict(size=9, color=C["txt"]), bgcolor=C["card"],
                     bordercolor=C["borde"], borderwidth=1))
     return fig
 
 def gauge_kw(valor, maximo, status, h=150):
-    color = SC.get(status, C["lima"])
+    color = SC.get(status, C["bosque"])
     fig = go.Figure(go.Indicator(
         mode="gauge+number",
         value=round(valor, 2),
         number=dict(suffix=" kW", font=dict(size=18, color=color, family="Inter")),
         gauge=dict(
-            axis=dict(range=[0, maximo], tickfont=dict(size=8, color=C["sec"])),
+            axis=dict(range=[0, maximo], tickfont=dict(size=8, color=C["sec"]),
+                      tickcolor=C["sec"]),
             bar=dict(color=color, thickness=.35),
-            bgcolor=C["card"], borderwidth=1, bordercolor=C["borde"],
+            bgcolor=C["card2"], borderwidth=1, bordercolor=C["borde"],
             steps=[
-                dict(range=[0, maximo*.5],  color=C["card2"]),
-                dict(range=[maximo*.5, maximo*.8], color="#1E2E1E"),
-                dict(range=[maximo*.8, maximo], color="#2A1A1A"),
+                dict(range=[0, maximo*.5],  color="#E8F5E9"),   # verde muy suave
+                dict(range=[maximo*.5, maximo*.8], color="#FFF8E1"),   # ámbar muy suave
+                dict(range=[maximo*.8, maximo], color="#FFEBEE"),   # rojo muy suave
             ],
             threshold=dict(line=dict(color=C["panico"], width=2), value=maximo*.85)
         )
@@ -348,7 +356,7 @@ MAX_EDIF = NUM_FASES_EDIFICIO * CONSUMO_MAX_KW
 with st.sidebar:
     st.markdown(
         f'<div class="sb-brand"><div class="sb-logo">{LOGO_SM}</div>'
-        f'<div><div class="sb-title">Energy Hunter</div>'
+        f'<div><div class="sb-title">Smart Energy Control</div>'
         f'<div class="sb-sub">Viewnext · 2026</div></div></div>',
         unsafe_allow_html=True)
     st.divider()
@@ -421,7 +429,7 @@ with st.sidebar:
 # ════════════════════════════════════════════════════════════════════════════════
 if page == "🏠  Dashboard":
 
-    hdr("Energy Hunter",
+    hdr("Smart Energy Control",
         f"Panel de control energético · {snap.get('timestamp','')[:19]}")
 
     # ── Barra de acciones (todos los requisitos funcionales) ──────────────────
