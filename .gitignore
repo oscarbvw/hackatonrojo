@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # Python
 __pycache__/
 *.py[cod]
@@ -28,3 +29,6 @@ Thumbs.db
 
 # Streamlit
 .streamlit/secrets.toml
+=======
+__pycache__/
+>>>>>>> fff278cf87641df0e5688d98efeea69ec5a77893
