@@ -20,7 +20,7 @@ from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import PolynomialFeatures
 
 from generar_dev import CONSUMO_MAX_KW
-from watchdog import ruta_snapshot, ruta_resumen, DIR_DATOS
+from heartbeat import ruta_snapshot, ruta_resumen, DIR_DATOS
 
 DIR_CHARTS = os.path.join(DIR_DATOS, "charts")
 
@@ -65,7 +65,7 @@ def generar_auditoria(fecha: str | None = None) -> dict:
     df  = _cargar_snapshot(dia)
 
     if df is None or df.empty:
-        return {"error": f"Sin datos para {dia}. Ejecuta watchdog.iniciar() primero."}
+        return {"error": f"Sin datos para {dia}. Ejecuta heartbeat.iniciar() primero."}
 
     ts_inicio = df["timestamp"].min().isoformat()
     ts_fin    = df["timestamp"].max().isoformat()
@@ -192,7 +192,7 @@ def predecir_consumo(n_predicciones: int = 4, fecha: str | None = None) -> dict:
     df  = _cargar_snapshot(dia)
 
     if df is None or df.empty:
-        return {"error": f"Sin datos para {dia}. Ejecuta watchdog.iniciar() primero."}
+        return {"error": f"Sin datos para {dia}. Ejecuta heartbeat.iniciar() primero."}
 
     n_puntos = df["timestamp"].nunique()
     if n_puntos < 3:
@@ -290,11 +290,11 @@ def predecir_consumo(n_predicciones: int = 4, fecha: str | None = None) -> dict:
 
 if __name__ == "__main__":
     # Generar datos de prueba si no existen
-    import watchdog, time
+    import heartbeat, time
     print("Generando 5 snapshots de prueba...")
     for _ in range(5):
-        watchdog.latido()
-        watchdog.detener()
+        heartbeat.latido()
+        heartbeat.detener()
         time.sleep(0.5)
 
     print("\n── Auditoría ──────────────────────────────────────────────────")
