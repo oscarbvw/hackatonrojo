@@ -1099,25 +1099,116 @@ def main() -> Path:
     prs.slide_width = SLIDE_W
     prs.slide_height = SLIDE_H
 
-    build_cover(prs, hero)                      # 1
-    build_problem(prs, 2, problem)              # 2
-    build_solution(prs, 3, dashboard)           # 3
-    build_advantages(prs, 4)                    # 4
-    build_panic(prs, 5, panic)                  # 5
-    build_architecture(prs, 6, architecture)    # 6
-    build_aws_deployment(prs, 7, aws_arch)      # 7
-    build_aws_costs(prs, 8, cost_compare)       # 8
-    build_savings(prs, 9, savings)              # 9
-    build_roadmap(prs, 10, roadmap)             # 10
-    # Slide 11: differentiation vs alternatives
-    diff = build_title_slide(
-        prs, 11,
+    # Speaker notes (~25-30 s each, kept tight for a 5-minute pitch).
+    notes = {
+        1: (
+            "Hola, somos el equipo de Energy Hunter. En los próximos cinco minutos vais "
+            "a ver una herramienta B2B que ayuda a edificios y empresas a consumir menos "
+            "energía y emitir menos CO2, con un solo clic. Menos consumo, menos "
+            "emisiones, más control."
+        ),
+        2: (
+            "Los edificios son responsables de hasta el 40 por ciento del consumo "
+            "eléctrico mundial. El gestor recibe la factura a fin de mes pero no sabe "
+            "qué fase ni qué equipo se le ha disparado. Las anomalías pasan días sin "
+            "detectarse, y apagar cargas no críticas implica llamadas y coordinación. "
+            "Hay un agujero entre lo que se mide y lo que se puede accionar."
+        ),
+        3: (
+            "Energy Hunter cierra ese hueco. Es un panel hecho en Streamlit que recibe "
+            "telemetría cada 30 segundos por fase, muestra los edificios en mapa, "
+            "calcula el coste con el precio del mercado SIOS y marca cualquier consumo "
+            "anómalo. Ve, alerta, y en la siguiente diapositiva veréis cómo actúa."
+        ),
+        4: (
+            "Estas son las seis ventajas que diferencian al producto: ahorro inmediato "
+            "del 40 por ciento por fase, detección automática de anomalías de domingo, "
+            "control granular sin tocar cargas críticas, telemetría cada 30 segundos "
+            "con back-off, accesibilidad WCAG 2.1 AA y un stack abierto que cualquiera "
+            "puede levantar en local en dos comandos."
+        ),
+        5: (
+            "Esta es la demo estrella: el botón de pánico granular. El operador "
+            "selecciona qué fases pasan a Modo Eco, confirma, y el webhook propaga la "
+            "orden al breaker. Servidores críticos siguen intactos. Iluminación, "
+            "climatización y cargadores se reducen un 40 por ciento al instante. La "
+            "acción se anuncia con aria-live para lectores de pantalla."
+        ),
+        6: (
+            "La arquitectura del MVP es simple a propósito. Streamlit consume un Mock "
+            "API local que simula los breakers y los precios SIOS, y un stub de Kiro "
+            "orquesta el fan-out a Modo Eco. Todo se levanta con dos comandos. La "
+            "lógica está cubierta con TDD y diez propiedades verificadas con Hypothesis."
+        ),
+        7: (
+            "Para producción, llevamos exactamente la misma lógica a AWS. Los breakers "
+            "publican por MQTT a IoT Core con TLS mutuo. Las reglas disparan funciones "
+            "Lambda que escriben en Timestream y, si detectan una anomalía, llaman al "
+            "endpoint de Modo Eco. El frontend Streamlit corre en Fargate detrás de "
+            "CloudFront y Cognito. Greengrass es opcional para autonomía sin red."
+        ),
+        8: (
+            "Y aquí está el argumento de venta: en los tres tramos el ahorro supera al "
+            "coste por más de siete a uno. Una pyme paga noventa y cinco euros al mes "
+            "en AWS y se ahorra setecientos veinte. Una mediana paga trescientos "
+            "ochenta y se ahorra cuatro mil doscientos. Un cliente corporativo paga "
+            "mil ochocientos cincuenta y se ahorra veintiséis mil. ROI positivo desde "
+            "el primer mes."
+        ),
+        9: (
+            "Si os preguntáis a dónde va cada euro: Timestream y Fargate son los "
+            "servicios más pesados, IoT Core suma poco gracias a la tarifa por millón "
+            "de mensajes, y Lambda apenas pesa. No hay licencias por dispositivo ni "
+            "compromisos anuales. Con Savings Plans bajamos otro veinte a cuarenta por "
+            "ciento. Cero sorpresas en factura."
+        ),
+        10: (
+            "El impacto es medible y auditable. Cada fase que entra en Modo Eco baja "
+            "su consumo un cuarenta por ciento, lo que se traduce en menos kilovatios, "
+            "menos euros y menos CO2 emitido. Y todo queda registrado, así que el "
+            "cliente puede demostrar el ahorro a su comité o a su auditor de "
+            "sostenibilidad."
+        ),
+        11: (
+            "El roadmap es claro. Hoy entregamos el MVP del hackathon. El siguiente "
+            "paso es un piloto con tres edificios reales. Después integramos breakers "
+            "físicos vía IoT Core, añadimos multi-tenant y alertas con IA, y lo "
+            "llevamos al mercado europeo."
+        ),
+        12: (
+            "Frente a otros proyectos del hackathon, no nos quedamos en la "
+            "visualización: actuamos. Granularidad por fase, stack abierto, "
+            "accesibilidad desde el día uno y verificación formal con propiedades. "
+            "Eso convierte una demo bonita en algo que un comprador B2B puede llevar "
+            "a producción."
+        ),
+        13: (
+            "Energía bajo control, naturaleza protegida. Energy Hunter convierte cada "
+            "edificio en un actor activo del ahorro. Estamos abiertos a preguntas y "
+            "tenemos demo en vivo lista. Gracias."
+        ),
+    }
+
+    s1 = build_cover(prs, hero)                                           # 1
+    s2 = build_problem(prs, 2, problem)                                   # 2
+    s3 = build_solution(prs, 3, dashboard)                                # 3
+    s4 = build_advantages(prs, 4)                                         # 4
+    s5 = build_panic(prs, 5, panic)                                       # 5
+    s6 = build_architecture(prs, 6, architecture)                         # 6
+    s7 = build_aws_deployment(prs, 7, aws_arch)                           # 7
+    s8 = build_aws_costs(prs, 8, cost_compare)                            # 8
+    s9 = build_aws_breakdown(prs, 9, cost_breakdown)                      # 9
+    s10 = build_savings(prs, 10, savings)                                 # 10
+    s11 = build_roadmap(prs, 11, roadmap)                                 # 11
+    # Slide 12: differentiation vs alternatives
+    s12 = build_title_slide(
+        prs, 12,
         "Frente a alternativas",
         "Lo que nos diferencia de otros proyectos del hackathon",
         "Foco en acción, no solo en visualización",
     )
     add_bullets(
-        diff, Inches(0.7), Inches(2.6), Inches(12), Inches(4),
+        s12, Inches(0.7), Inches(2.6), Inches(12), Inches(4),
         [
             "Otros muestran datos: nosotros además accionamos el Modo Eco en segundos.",
             "Granularidad por fase, no por edificio entero (cargas críticas siempre seguras).",
@@ -1127,7 +1218,13 @@ def main() -> Path:
         ],
         size=18,
     )
-    build_closing(prs, 12)                      # 12
+    s13 = build_closing(prs, 13)                                          # 13
+
+    # Attach speaker notes (slides are 1-indexed via prs.slides)
+    slide_objs = list(prs.slides)
+    for idx, slide_obj in enumerate(slide_objs, start=1):
+        if idx in notes:
+            add_speaker_notes(slide_obj, notes[idx])
 
     OUTPUT.parent.mkdir(parents=True, exist_ok=True)
     prs.save(OUTPUT)
