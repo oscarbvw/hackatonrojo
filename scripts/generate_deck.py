@@ -726,6 +726,31 @@ def add_footer(slide, page_num: int, total: int) -> None:
     )
 
 
+def _prepare_logo(source: Path, target: Path) -> Path | None:
+    """Normalize the brand logo to a transparent PNG.
+
+    Accepts PNG or GIF (with palette transparency) and writes an RGBA PNG so
+    PowerPoint renders it cleanly on any background colour.
+    """
+    if not source.exists():
+        return None
+    target.parent.mkdir(parents=True, exist_ok=True)
+    img = Image.open(source)
+    # Convert palette+transparency or RGB to RGBA so the alpha channel is explicit.
+    if img.mode != "RGBA":
+        img = img.convert("RGBA")
+    img.save(target, "PNG", optimize=True)
+    return target
+
+
+def add_brand_logo(slide, logo: Path, *,
+                   left=Inches(11.95), top=Inches(0.25),
+                   width=Inches(1.3)) -> None:
+    """Stamp the Smart Energy Control logo as a small brand mark."""
+    if logo.exists():
+        slide.shapes.add_picture(str(logo), left, top, width=width)
+
+
 def add_speaker_notes(slide, text: str) -> None:
     """Attach speaker notes to the slide (~25-30 s of speech)."""
     slide.notes_slide.notes_text_frame.text = text
@@ -737,6 +762,13 @@ def add_speaker_notes(slide, text: str) -> None:
 
 TOTAL_SLIDES = 14
 
+# Set by main() before any slide is built.
+LOGO_PATH: Path | None = None
+
+
+def _logo_available() -> bool:
+    return LOGO_PATH is not None and LOGO_PATH.exists()
+
 
 def build_cover(prs: Presentation, hero_path: Path) -> None:
     slide = prs.slides.add_slide(prs.slide_layouts[6])  # blank
@@ -744,6 +776,14 @@ def build_cover(prs: Presentation, hero_path: Path) -> None:
 
     # Hero image as full-bleed top band
     slide.shapes.add_picture(str(hero_path), 0, 0, width=SLIDE_W, height=Inches(4.2))
+
+    # Brand logo on top-right of the hero
+    if _logo_available():
+        # Logo aspect 1380:752 ≈ 1.835. width=2.6 in -> height ≈ 1.42 in
+        slide.shapes.add_picture(
+            str(LOGO_PATH),
+            Inches(10.4), Inches(0.3), width=Inches(2.6),
+        )
 
     # Green title bar overlay
     bar = slide.shapes.add_shape(MSO_SHAPE.RECTANGLE, 0, Inches(3.6), SLIDE_W, Inches(0.6))
@@ -789,6 +829,12 @@ def build_title_slide(prs: Presentation, page: int, eyebrow: str, title: str, su
     slide = prs.slides.add_slide(prs.slide_layouts[6])
     add_background(slide, SAND)
     add_side_band(slide, DEEP_GREEN)
+    if _logo_available():
+        # Small brand mark in the top-right corner. width=1.1 in -> height ≈ 0.6 in
+        slide.shapes.add_picture(
+            str(LOGO_PATH),
+            Inches(12.05), Inches(0.18), width=Inches(1.1),
+        )
     add_textbox(slide, Inches(0.7), Inches(0.5), Inches(12), Inches(0.4),
                 eyebrow.upper(), size=12, bold=True, color=LEAF_GREEN)
     add_textbox(slide, Inches(0.7), Inches(0.85), Inches(12), Inches(0.9),
@@ -1097,6 +1143,14 @@ def build_roadmap(prs: Presentation, page: int, image: Path) -> None:
 def build_closing(prs: Presentation, page: int) -> None:
     slide = prs.slides.add_slide(prs.slide_layouts[6])
     add_background(slide, DEEP_GREEN)
+
+    if _logo_available():
+        # Centered brand logo at the top. width=2.4 in -> height ≈ 1.31 in
+        slide.shapes.add_picture(
+            str(LOGO_PATH),
+            Inches(5.45), Inches(0.25), width=Inches(2.4),
+        )
+
     add_textbox(
         slide, Inches(0.7), Inches(1.6), Inches(12), Inches(1),
         "Energía bajo control. Naturaleza protegida.",
@@ -1164,6 +1218,11 @@ def main() -> Path:
     app_panic = APP_DIR / "imagen2.png"
     app_extra_a = APP_DIR / "imagen3.png"
     app_extra_b = APP_DIR / "imagen4.png"
+
+    # Brand logo: source is logotipo.gif (transparent palette); we normalise it
+    # to a transparent PNG so PowerPoint renders it cleanly on any background.
+    global LOGO_PATH
+    LOGO_PATH = _prepare_logo(APP_DIR / "logotipo.gif", ASSETS / "brand_logo.png")
 
     # 2. Build deck (16:9)
     prs = Presentation()
