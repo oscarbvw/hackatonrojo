@@ -1,12 +1,11 @@
 """
-Backend · Energy Hunter
-=======================
-Único punto de entrada para el front: get_data() → dict
+engine.py — Energy Hunter · Backend core
 
-Funciones de control:
-  ingest()               → igual que get_data() + persiste en CSV histórico
-  panico_energetico(id)  → corte remoto de un edificio o de todos
-  desactivar_panico(id)  → restaura estado normal
+Punto de entrada único para el front:
+  get_data(id_edificio?)  → snapshot completo o filtrado por edificio
+  get_ranking()           → lista de edificios ordenada por eficiencia
+  panico_energetico(id?)  → corte remoto
+  desactivar_panico(id?)  → restaura estado normal
 """
 
 import csv
@@ -16,315 +15,303 @@ from datetime import datetime
 from generar_elec import generar as _api_elec
 from generar_dev  import generar as _api_dev, NUM_EDIFICIOS, CONSUMO_MAX_KW
 
-# ── Umbrales ────────────────────────────────────────────────────────────────
-PRECIO_ALTO_EUR_KWH   = 0.15   # a partir de aquí se emite alerta de precio
-ANOMALIA_UMBRAL_KW    = 2.0    # consumo por diferencial que dispara ANOMALIA fuera de horario
+# ── Umbrales de negocio ───────────────────────────────────────────────────────
+PRECIO_ALTO_KWH  = 0.15   # €/kWh — por encima → alerta PRECIO_ALTO
+ANOMALIA_KW      = 2.0    # kW/diferencial fuera de horario → alerta ANOMALIA
 
-# ── Estado de pánico en memoria (se resetea al reiniciar el proceso) ────────
+# ── Estado de pánico en memoria ───────────────────────────────────────────────
 _panic: dict[str, bool] = {}
 
-# ── CSV ─────────────────────────────────────────────────────────────────────
-CSV_PATH   = "historico_consumo.csv"
-CSV_FIELDS = [
+# ── CSV histórico ─────────────────────────────────────────────────────────────
+CSV_PATH = "data/historico_consumo.csv"
+_CSV_COLS = [
     "timestamp", "periodo_tarifario", "precio_kwh",
-    "edificio_id", "diferencial_id", "fase",
-    "activo", "consumo_kw", "consumo_edificio_kw",
-    "coste_hora_eur", "status",
+    "id_edificio", "id_diferencial", "id_fase",
+    "activo", "consumo_diferencial_kw", "corriente_a", "tension_v",
+    "consumo_edificio_kw", "coste_hora_eur", "status",
 ]
 
+# Prioridad para escalar status al nivel de edificio
+_PRIO = {"OK": 0, "APAGADO": 1, "PRECIO_ALTO": 2, "ANOMALIA": 3, "PANICO": 4}
 
-# ════════════════════════════════════════════════════════════════════════════
-# Helpers de dominio
-# ════════════════════════════════════════════════════════════════════════════
+# Textos de alerta por tipo (el front los muestra junto al consumo)
+_TEXTOS_ALERTA = {
+    "ANOMALIA":    "⚠️ Consumo anómalo detectado: se ha superado el umbral de {umbral} kW fuera de horario laboral ({consumo} kW activos).",
+    "PRECIO_ALTO": "💸 Precio de mercado elevado: {precio} €/kWh. Considera diferir cargas no críticas.",
+    "PANICO":      "🔴 Pánico energético activo: circuito cortado remotamente.",
+}
 
-def _precio_kwh(datos_elec: dict) -> float:
-    """Precio de la hora actual en €/kWh (la API devuelve €/MWh)."""
-    hora    = datetime.now().hour
-    valores = datos_elec["included"][0]["attributes"]["values"]
-    return round(valores[hora]["value"] / 1000, 6)
+
+# ════════════════════════════════════════════════════════════════════════════════
+# Helpers internos
+# ════════════════════════════════════════════════════════════════════════════════
+
+def _precio_kwh_actual(datos_elec: dict) -> float:
+    hora = datetime.now().hour
+    mwh  = datos_elec["included"][0]["attributes"]["values"][hora]["value"]
+    return round(mwh / 1000, 6)
 
 
 def _periodo_tarifario() -> str:
-    """
-    Periodos 2.0TD (Península, Red Eléctrica):
-      VALLE  → 00-08 h entre semana + todo el fin de semana
-      LLANO  → 08-10 h, 14-18 h y 22-24 h entre semana
-      PUNTA  → 10-14 h y 18-22 h entre semana
-    """
-    ahora = datetime.now()
-    h     = ahora.hour
-    finde = ahora.weekday() >= 5
-
-    if finde or h < 8:
-        return "VALLE"
-    if (10 <= h < 14) or (18 <= h < 22):
-        return "PUNTA"
+    """Periodos 2.0TD peninsular (REE España)."""
+    h, finde = datetime.now().hour, datetime.now().weekday() >= 5
+    if finde or h < 8:                    return "VALLE"
+    if (10 <= h < 14) or (18 <= h < 22): return "PUNTA"
     return "LLANO"
 
 
 def _hora_baja_actividad() -> bool:
-    """True si el edificio debería estar desocupado (finde o fuera de 07-22 h)."""
     ahora = datetime.now()
     return ahora.weekday() >= 5 or ahora.hour < 7 or ahora.hour >= 22
 
 
-def _status_diferencial(activo: bool, consumo_kw: float, precio_kwh: float, bid: str) -> str:
-    if _panic.get(bid):        return "PANICO"
-    if not activo:             return "APAGADO"
-    if _hora_baja_actividad() and consumo_kw > ANOMALIA_UMBRAL_KW:
-        return "ANOMALIA"
-    if precio_kwh > PRECIO_ALTO_EUR_KWH:
-        return "PRECIO_ALTO"
+def _calcular_status(activo: bool, consumo_kw: float, precio_kwh: float, eid: str) -> str:
+    if _panic.get(eid):                                        return "PANICO"
+    if not activo:                                             return "APAGADO"
+    if _hora_baja_actividad() and consumo_kw > ANOMALIA_KW:   return "ANOMALIA"
+    if precio_kwh > PRECIO_ALTO_KWH:                          return "PRECIO_ALTO"
     return "OK"
 
 
-# Prioridad para escalar el status al nivel de edificio
-_PRIO = {"OK": 0, "APAGADO": 1, "PRECIO_ALTO": 2, "ANOMALIA": 3, "PANICO": 4}
-
-def _status_edificio(statuses: list[str]) -> str:
-    return max(statuses, key=lambda s: _PRIO.get(s, 0))
-
-
-def _alerta(eid: str, did: str | None, tipo: str, severidad: str, msg: str, ts: str) -> dict:
-    return {
-        "edificio_id":    eid,
-        "diferencial_id": did,
-        "tipo":           tipo,
-        "severidad":      severidad,   # INFO | WARNING | CRITICAL
-        "mensaje":        msg,
-        "timestamp":      ts,
-    }
+def _texto_alerta(status: str, consumo_kw: float, precio_kwh: float) -> str | None:
+    """Texto legible para mostrar junto al consumo en la UI."""
+    if status == "ANOMALIA":
+        return _TEXTOS_ALERTA["ANOMALIA"].format(umbral=ANOMALIA_KW, consumo=consumo_kw)
+    if status == "PRECIO_ALTO":
+        return _TEXTOS_ALERTA["PRECIO_ALTO"].format(precio=round(precio_kwh, 4))
+    if status == "PANICO":
+        return _TEXTOS_ALERTA["PANICO"]
+    return None
 
 
-# ════════════════════════════════════════════════════════════════════════════
-# Núcleo: construir snapshot completo
-# ════════════════════════════════════════════════════════════════════════════
+# ════════════════════════════════════════════════════════════════════════════════
+# Núcleo: construir snapshot
+# ════════════════════════════════════════════════════════════════════════════════
 
-def _snapshot() -> dict:
-    datos_elec    = _api_elec()
-    datos_dev     = _api_dev()
-    precio_kwh    = _precio_kwh(datos_elec)
-    periodo       = _periodo_tarifario()
-    ts            = datos_dev["snapshot_time"]
-    alerta_precio = precio_kwh > PRECIO_ALTO_EUR_KWH
-    alertas_glob: list[dict] = []
+def _build_snapshot() -> dict:
+    datos_elec = _api_elec()
+    datos_dev  = _api_dev()
+    precio_kwh = _precio_kwh_actual(datos_elec)
+    periodo    = _periodo_tarifario()
+    ts         = datos_dev["snapshot_time"]
 
-    # Alerta global de precio alto (una sola, no por dispositivo)
-    if alerta_precio:
-        alertas_glob.append(_alerta(
-            None, None, "PRECIO_ALTO", "WARNING",
-            f"Precio de mercado elevado: {precio_kwh:.4f} €/kWh "
-            f"(umbral {PRECIO_ALTO_EUR_KWH} €/kWh)",
-            ts,
-        ))
+    # ── Paso 1: consumo total por edificio ────────────────────────────────────
+    consumo_edificio: dict[str, float] = {}
+    num_diffs:        dict[str, int]   = {}
+    for dev in datos_dev["dispositivos"]:
+        eid    = dev["id_edificio"]
+        activo = dev["estado"] == "CERRADO" and not _panic.get(eid)
+        consumo_edificio[eid] = round(
+            consumo_edificio.get(eid, 0.0) + (dev["potencia_kw"] if activo else 0.0), 3
+        )
+        num_diffs[eid] = num_diffs.get(eid, 0) + 1
 
-    # ── Agrupar devices por edificio ─────────────────────────────────────────
-    edificios_raw: dict[str, list] = {}
-    for dev in datos_dev["devices"]:
-        edificios_raw.setdefault(dev["building_id"], []).append(dev)
+    # ── Paso 2: lista plana de diferenciales ──────────────────────────────────
+    diferenciales = []
+    alertas       = []
 
-    # ── Construir cada edificio ──────────────────────────────────────────────
-    edificios_out: list[dict] = []
+    if precio_kwh > PRECIO_ALTO_KWH:
+        alertas.append({
+            "tipo":      "PRECIO_ALTO",
+            "severidad": "WARNING",
+            "id_edificio":    None,
+            "id_diferencial": None,
+            "texto":     _texto_alerta("PRECIO_ALTO", 0, precio_kwh),
+        })
 
-    for bid, devices in edificios_raw.items():
-        en_panico         = bool(_panic.get(bid))
-        alertas_edificio: list[dict] = []
-        diferenciales_out: list[dict] = []
-        consumo_edificio  = 0.0
+    for dev in datos_dev["dispositivos"]:
+        eid        = dev["id_edificio"]
+        activo     = dev["estado"] == "CERRADO" and not _panic.get(eid)
+        consumo_kw = round(dev["potencia_kw"], 3) if activo else 0.0
+        status     = _calcular_status(activo, consumo_kw, precio_kwh, eid)
+        coste_h    = round(consumo_kw * precio_kwh, 4)
+        c_edif     = consumo_edificio[eid]
 
-        for dev in devices:
-            activo     = dev["active"] and not en_panico
-            consumo_kw = round(dev["power_kw"], 4) if activo else 0.0
-            status     = _status_diferencial(dev["active"], consumo_kw, precio_kwh, bid)
-            coste_h    = round(consumo_kw * precio_kwh, 4)
-            consumo_edificio += consumo_kw
+        texto = _texto_alerta(status, consumo_kw, precio_kwh)
 
-            diferenciales_out.append({
-                "id":           dev["device_id"],
-                "fase":         dev["phase_id"],
-                "activo":       activo,
-                "consumo_kw":   consumo_kw,
-                "coste_hora_eur": coste_h,
-                "status":       status,
+        diferenciales.append({
+            "id_edificio":            eid,
+            "id_diferencial":         dev["id_diferencial"],
+            "id_fase":                dev["id_fase"],
+            "activo":                 activo,
+            "consumo_diferencial_kw": consumo_kw,
+            "corriente_a":            dev["corriente_a"]      if activo else 0.0,
+            "tension_v":              dev["tension_v"]        if activo else 0.0,
+            "factor_potencia":        dev["factor_potencia"]  if activo else 0.0,
+            "coste_hora_eur":         coste_h,
+            "consumo_edificio_kw":    c_edif,
+            "num_diferenciales":      num_diffs[eid],
+            "pct_sobre_edificio":     round(consumo_kw / c_edif * 100, 2) if c_edif > 0 else 0.0,
+            "status":                 status,
+            "texto_alerta":           texto,   # None si status == OK o APAGADO
+        })
+
+        if status in ("ANOMALIA", "PANICO"):
+            alertas.append({
+                "tipo":           status,
+                "severidad":      "CRITICAL" if status == "PANICO" else "WARNING",
+                "id_edificio":    eid,
+                "id_diferencial": dev["id_diferencial"],
+                "texto":          texto,
             })
 
-            # Alertas a nivel de dispositivo
-            if status == "ANOMALIA":
-                alertas_edificio.append(_alerta(
-                    bid, dev["device_id"], "CONSUMO_ANOMALO", "WARNING",
-                    f"{dev['device_id']} consume {consumo_kw} kW fuera de horario laboral",
-                    ts,
-                ))
-            elif status == "PANICO":
-                alertas_edificio.append(_alerta(
-                    bid, dev["device_id"], "PANICO_ACTIVO", "CRITICAL",
-                    f"{dev['device_id']} cortado por pánico energético",
-                    ts,
-                ))
+    # ── Paso 3: resumen por edificio ──────────────────────────────────────────
+    edificios_map: dict[str, dict] = {}
+    for d in diferenciales:
+        eid = d["id_edificio"]
+        if eid not in edificios_map:
+            edificios_map[eid] = {
+                "id_edificio":       eid,
+                "num_diferenciales": d["num_diferenciales"],
+                "num_activos":       0,
+                "consumo_total_kw":  d["consumo_edificio_kw"],
+                "coste_hora_eur":    round(d["consumo_edificio_kw"] * precio_kwh, 4),
+                "factor_carga_pct":  round(
+                    d["consumo_edificio_kw"] / (d["num_diferenciales"] * CONSUMO_MAX_KW) * 100, 2
+                ),
+                "_statuses": [],
+            }
+        edificios_map[eid]["num_activos"]  += int(d["activo"])
+        edificios_map[eid]["_statuses"].append(d["status"])
 
-        consumo_edificio = round(consumo_edificio, 4)
-        coste_edificio_h = round(consumo_edificio * precio_kwh, 4)
-        num_activos      = sum(1 for d in diferenciales_out if d["activo"])
-        num_diffs        = len(diferenciales_out)
-        max_teorico_kw   = num_diffs * CONSUMO_MAX_KW
-        status_edificio  = _status_edificio([d["status"] for d in diferenciales_out])
+    edificios = []
+    for e in edificios_map.values():
+        statuses     = e.pop("_statuses")
+        e["status"]  = max(statuses, key=lambda s: _PRIO.get(s, 0))
+        e["alertas_edificio"] = [a for a in alertas if a["id_edificio"] == e["id_edificio"]]
+        edificios.append(e)
 
-        # Añadir pct_sobre_edificio a cada diferencial (necesita consumo_edificio)
-        for d in diferenciales_out:
-            d["pct_sobre_edificio"] = (
-                round(d["consumo_kw"] / consumo_edificio * 100, 2)
-                if consumo_edificio > 0 else 0.0
-            )
-
-        edificios_out.append({
-            "id": bid,
-            "resumen": {
-                "num_diferenciales":  num_diffs,
-                "num_activos":        num_activos,
-                "consumo_total_kw":   consumo_edificio,
-                "coste_hora_eur":     coste_edificio_h,
-                "coste_dia_est_eur":  round(coste_edificio_h * 24, 2),
-                "status":             status_edificio,
-            },
-            "eficiencia": {
-                "consumo_medio_diferencial_kw": round(consumo_edificio / num_diffs, 4) if num_diffs else 0.0,
-                "factor_carga_pct":             round(consumo_edificio / max_teorico_kw * 100, 2) if max_teorico_kw else 0.0,
-                # vs_media_global_pct se enriquece en el paso siguiente
-                "vs_media_global_pct": None,
-            },
-            "diferenciales": diferenciales_out,
-            "alertas":       alertas_edificio,
-        })
-
-        alertas_glob.extend(alertas_edificio)
-
-    # ── Métricas globales ────────────────────────────────────────────────────
-    consumos      = [e["resumen"]["consumo_total_kw"] for e in edificios_out]
-    consumo_total = round(sum(consumos), 4)
-    media_global  = round(consumo_total / len(consumos), 4) if consumos else 0.0
-    coste_total_h = round(sum(e["resumen"]["coste_hora_eur"] for e in edificios_out), 4)
-
-    # Enriquecer eficiencia con vs_media_global_pct
-    for e in edificios_out:
-        c = e["resumen"]["consumo_total_kw"]
-        e["eficiencia"]["vs_media_global_pct"] = (
-            round((c - media_global) / media_global * 100, 2) if media_global else 0.0
-        )
-
-    # ── Ranking de eficiencia ────────────────────────────────────────────────
-    ordenados = sorted(edificios_out, key=lambda e: e["resumen"]["consumo_total_kw"])
-    consumo_mejor = ordenados[0]["resumen"]["consumo_total_kw"] if ordenados else 1.0
-    consumo_peor  = ordenados[-1]["resumen"]["consumo_total_kw"] if ordenados else 1.0
+    # ── Paso 4: ranking de eficiencia ─────────────────────────────────────────
+    ordenados    = sorted(edificios, key=lambda e: e["consumo_total_kw"])
+    media_global = round(
+        sum(e["consumo_total_kw"] for e in edificios) / len(edificios), 3
+    ) if edificios else 0.0
+    consumo_peor = ordenados[-1]["consumo_total_kw"] if ordenados else 1.0
 
     ranking = []
-    for pos, e in enumerate(ordenados, start=1):
-        c = e["resumen"]["consumo_total_kw"]
+    for pos, e in enumerate(ordenados, 1):
+        c = e["consumo_total_kw"]
         ranking.append({
-            "posicion":              pos,
-            "id":                    e["id"],
-            "consumo_total_kw":      c,
-            "coste_hora_eur":        e["resumen"]["coste_hora_eur"],
-            "vs_media_pct":          e["eficiencia"]["vs_media_global_pct"],
-            "vs_peor_pct":           round((c - consumo_peor) / consumo_peor * 100, 2) if consumo_peor else 0.0,
-            "status":                e["resumen"]["status"],
+            "posicion":               pos,
+            "id_edificio":            e["id_edificio"],
+            "consumo_total_kw":       c,
+            "coste_hora_eur":         e["coste_hora_eur"],
+            "vs_media_pct":           round((c - media_global) / media_global * 100, 2) if media_global else 0.0,
+            "ahorro_vs_peor_eur_dia": round((consumo_peor - c) * precio_kwh * 24, 2),
+            "status":                 e["status"],
         })
 
-    # ── Resumen global ───────────────────────────────────────────────────────
-    resumen_global = {
-        "num_edificios":              len(edificios_out),
-        "num_diferenciales":          sum(e["resumen"]["num_diferenciales"] for e in edificios_out),
-        "num_activos":                sum(e["resumen"]["num_activos"] for e in edificios_out),
-        "consumo_total_kw":           consumo_total,
-        "coste_hora_eur":             coste_total_h,
-        "coste_dia_est_eur":          round(coste_total_h * 24, 2),
-        "media_consumo_por_edificio_kw": media_global,
-        "num_alertas":                len(alertas_glob),
-        "edificio_mas_eficiente":     {"id": ordenados[0]["id"],  "consumo_total_kw": consumo_mejor} if ordenados else None,
-        "edificio_menos_eficiente":   {"id": ordenados[-1]["id"], "consumo_total_kw": consumo_peor}  if ordenados else None,
+    return {
+        "timestamp":          ts,
+        "precio_kwh":         precio_kwh,
+        "periodo_tarifario":  periodo,
+        "alerta_activa":      len(alertas) > 0,
+        "num_alertas":        len(alertas),
+        "diferenciales":      diferenciales,
+        "edificios":          edificios,
+        "ranking_eficiencia": ranking,
+        "alertas":            alertas,
     }
+
+
+# ════════════════════════════════════════════════════════════════════════════════
+# API pública
+# ════════════════════════════════════════════════════════════════════════════════
+
+def get_data(id_edificio: str | None = None) -> dict:
+    """
+    Snapshot en tiempo real.
+
+    Sin argumentos  → datos completos de todos los edificios.
+    Con id_edificio → solo ese edificio (misma estructura, filtrada).
+
+    Nunca lanza excepciones: si los generadores fallan, retorna {"error": str}.
+    """
+    try:
+        snap = _build_snapshot()
+    except Exception as exc:
+        return {"error": str(exc), "timestamp": datetime.now().isoformat()}
+
+    if id_edificio is None:
+        return snap
 
     return {
-        "snapshot_time": ts,
-        "mercado": {
-            "precio_kwh":      precio_kwh,
-            "periodo_tarifario": periodo,
-            "alerta_precio":   alerta_precio,
-        },
-        "resumen_global":    resumen_global,
-        "edificios":         edificios_out,
-        "ranking_eficiencia": ranking,
-        "alertas":           alertas_glob,
+        "timestamp":          snap["timestamp"],
+        "precio_kwh":         snap["precio_kwh"],
+        "periodo_tarifario":  snap["periodo_tarifario"],
+        "alerta_activa":      any(a["id_edificio"] == id_edificio for a in snap["alertas"]),
+        "num_alertas":        sum(1 for a in snap["alertas"] if a["id_edificio"] == id_edificio),
+        "diferenciales":      [d for d in snap["diferenciales"] if d["id_edificio"] == id_edificio],
+        "edificios":          [e for e in snap["edificios"]     if e["id_edificio"] == id_edificio],
+        "ranking_eficiencia": [r for r in snap["ranking_eficiencia"] if r["id_edificio"] == id_edificio],
+        "alertas":            [a for a in snap["alertas"] if a.get("id_edificio") == id_edificio],
     }
 
 
-# ════════════════════════════════════════════════════════════════════════════
-# API pública
-# ════════════════════════════════════════════════════════════════════════════
-
-def get_data() -> dict:
+def get_ranking() -> list[dict]:
     """
-    Devuelve el snapshot completo. Llamar desde el front en cada refresco.
-    No produce efectos secundarios (no escribe CSV).
+    Ranking de eficiencia energética entre edificios.
+    Llamar en cada latido para mantener el panel de ranking actualizado.
     """
-    return _snapshot()
+    return _build_snapshot()["ranking_eficiencia"]
 
 
-def ingest() -> dict:
+def panico_energetico(id_edificio: str | None = None) -> dict:
     """
-    Igual que get_data() pero además persiste una fila por diferencial en el CSV histórico.
-    Llamar desde un scheduler o desde el botón "Registrar" del front.
+    Corte remoto de todos los diferenciales de un edificio.
+    None → aplica a todos los edificios.
     """
-    snap = _snapshot()
-    edificios_idx = {e["id"]: e for e in snap["edificios"]}
-
-    file_exists = os.path.exists(CSV_PATH)
-    with open(CSV_PATH, "a", newline="", encoding="utf-8") as f:
-        writer = csv.DictWriter(f, fieldnames=CSV_FIELDS)
-        if not file_exists:
-            writer.writeheader()
-        for e in snap["edificios"]:
-            for d in e["diferenciales"]:
-                writer.writerow({
-                    "timestamp":           snap["snapshot_time"],
-                    "periodo_tarifario":   snap["mercado"]["periodo_tarifario"],
-                    "precio_kwh":          snap["mercado"]["precio_kwh"],
-                    "edificio_id":         e["id"],
-                    "diferencial_id":      d["id"],
-                    "fase":                d["fase"],
-                    "activo":              d["activo"],
-                    "consumo_kw":          d["consumo_kw"],
-                    "consumo_edificio_kw": e["resumen"]["consumo_total_kw"],
-                    "coste_hora_eur":      d["coste_hora_eur"],
-                    "status":              d["status"],
-                })
-    return snap
-
-
-def panico_energetico(building_id: str | None = None) -> dict:
-    """Corte remoto. None → aplica a todos los edificios."""
     targets = (
-        [building_id] if building_id
+        [id_edificio] if id_edificio
         else [f"edificio_{i:02d}" for i in range(1, NUM_EDIFICIOS + 1)]
     )
     for bid in targets:
         _panic[bid] = True
-    return {"accion": "PANICO_ENERGETICO", "edificios_afectados": targets}
+    return {"accion": "PANICO_ENERGETICO", "edificios_afectados": targets, "timestamp": datetime.now().isoformat()}
 
 
-def desactivar_panico(building_id: str | None = None) -> dict:
-    """Restaura estado normal."""
+def desactivar_panico(id_edificio: str | None = None) -> dict:
+    """Restaura el estado normal tras un pánico energético."""
     targets = (
-        [building_id] if building_id
+        [id_edificio] if id_edificio
         else [f"edificio_{i:02d}" for i in range(1, NUM_EDIFICIOS + 1)]
     )
     for bid in targets:
         _panic[bid] = False
-    return {"accion": "RESTAURAR_NORMAL", "edificios_afectados": targets}
+    return {"accion": "RESTAURAR_NORMAL", "edificios_afectados": targets, "timestamp": datetime.now().isoformat()}
 
 
-# ════════════════════════════════════════════════════════════════════════════
-# Smoke test
-# ════════════════════════════════════════════════════════════════════════════
+def ingest() -> dict:
+    """
+    Igual que get_data() y además persiste una fila por diferencial en el CSV histórico.
+    Llamado internamente por watchdog.latido(). No es necesario llamarlo desde el front.
+    """
+    snap = _build_snapshot()
+    os.makedirs(os.path.dirname(CSV_PATH), exist_ok=True)
+    file_exists = os.path.exists(CSV_PATH)
+
+    with open(CSV_PATH, "a", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(f, fieldnames=_CSV_COLS)
+        if not file_exists:
+            writer.writeheader()
+        for d in snap["diferenciales"]:
+            writer.writerow({
+                "timestamp":              snap["timestamp"],
+                "periodo_tarifario":      snap["periodo_tarifario"],
+                "precio_kwh":             snap["precio_kwh"],
+                "id_edificio":            d["id_edificio"],
+                "id_diferencial":         d["id_diferencial"],
+                "id_fase":                d["id_fase"],
+                "activo":                 d["activo"],
+                "consumo_diferencial_kw": d["consumo_diferencial_kw"],
+                "corriente_a":            d["corriente_a"],
+                "tension_v":              d["tension_v"],
+                "consumo_edificio_kw":    d["consumo_edificio_kw"],
+                "coste_hora_eur":         d["coste_hora_eur"],
+                "status":                 d["status"],
+            })
+    return snap
+
 
 if __name__ == "__main__":
     import json
